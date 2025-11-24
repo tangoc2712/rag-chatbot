@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Commerce Chatbot</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>New Chat</h1>
+            <div class="header-info">
+                <span id="customer-status">Customer ID: Not Set</span>
+                <button id="clear-chat-btn" class="clear-btn">Clear conversation</button>
+            </div>
+        </div>
+        
+        <div class="chat-messages" id="chat-messages">
+            <div class="welcome-message">
+                <h2>Welcome to Your E-Commerce Assistant! 👋</h2>
+                <p>I'm your AI-powered shopping companion, here to make your online shopping experience seamless and enjoyable!</p>
+                <p><strong>How I can help you:</strong></p>
+                <ul>
+                    <li>🔍 <strong>Search for products</strong> - Find exactly what you're looking for</li>
+                    <li>📦 <strong>Track your orders</strong> - Check order status and history</li>
+                    <li>⭐ <strong>Get recommendations</strong> - Discover top-rated products</li>
+                    <li>📊 <strong>Priority orders</strong> - View high-priority order information</li>
+                </ul>
+                <p class="tip">💡 <strong>Pro Tip:</strong> Set your customer ID using: <code>set customer &lt;id&gt;</code> to access your order history!</p>
+                <p class="example-queries">
+                    <strong>Try asking me:</strong><br>
+                    • "Show me laptops under $1000"<br>
+                    • "What are the best wireless headphones?"<br>
+                    • "Show my recent orders"
+                </p>
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <div class="typing-indicator" id="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <form id="chat-form">
+                <input 
+                    type="text" 
+                    id="message-input" 
+                    placeholder="Type your message here..." 
+                    autocomplete="off"
+                    required
+                >
+                <button type="submit" id="send-btn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="chat.js"></script>
+</body>
+</html>

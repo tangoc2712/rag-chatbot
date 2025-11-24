@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from .endpoints import orders, products
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from .endpoints import orders, products, chat
 from ..config import Settings
 
 # Initialize FastAPI app
@@ -19,9 +21,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files
+static_path = Path(__file__).parent.parent.parent / "static"
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
 # Include routers
 app.include_router(orders.router, prefix="/orders", tags=["orders"])
 app.include_router(products.router, prefix="/products", tags=["products"])
+app.include_router(chat.router, prefix="/chat", tags=["chat"])
 
 # Health check endpoint
 @app.get("/health")
@@ -37,7 +45,8 @@ async def root():
         "name": "E-commerce Dataset API",
         "version": "1.0.0",
         "documentation": "/docs",
-        "health_check": "/health"
+        "health_check": "/health",
+        "chat_interface": "/static/index.html"
     }
 
 if __name__ == "__main__":

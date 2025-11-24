@@ -9,7 +9,8 @@ This project implements a chatbot that can:
 - Handle customer order inquiries
 - Process high-priority order queries
 - Provide product recommendations
-- Interact through a command-line interface
+- Interact through a web-based chat interface or command-line
+- Store chat history in PostgreSQL for persistent conversations
 
 ## Project Structure
 ```
@@ -102,10 +103,37 @@ python scripts/run.py api
 ```
 The API will be available at http://localhost:8000
 
+### Using the Web Chat Interface (Recommended)
+
+1. First, create the chat history table:
+```bash
+python scripts/create_chat_history_table.py
+```
+
+2. Start the API server:
+```bash
+python scripts/run.py api
+```
+
+3. Open your browser and navigate to:
+```
+http://localhost:8000/static/index.html
+```
+
+**Features:**
+- 💬 Modern chat interface
+- 💾 Persistent chat history
+- 🔄 Session management
+- 📱 Responsive design
+
+For detailed information, see [WEB_CHAT_GUIDE.md](WEB_CHAT_GUIDE.md)
+
 ### Using the Chat Interface
 ```bash
 python scripts/run.py chat
 ```
+
+**OR** use the web interface at http://localhost:8000/static/index.html (recommended)
 
 Example chat commands:
 ```
@@ -131,6 +159,14 @@ Fetch 5 most recent high-priority orders
 ### Order Endpoints
 - `GET /orders/customer/{customer_id}`: Get customer orders
 - `GET /orders/priority/{priority}`: Get orders by priority
+
+### Chat Endpoints
+- `POST /chat/message`: Send a message to the chatbot
+- `GET /chat/history/{session_id}`: Get chat history for a session
+- `GET /chat/history/customer/{customer_id}`: Get all chat history for a customer
+- `DELETE /chat/history/{session_id}`: Delete chat history for a session
+
+See [WEB_CHAT_GUIDE.md](WEB_CHAT_GUIDE.md) for detailed API documentation.
 
 ## Testing
 
