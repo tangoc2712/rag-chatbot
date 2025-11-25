@@ -89,7 +89,7 @@ body {
 /* Welcome Message Styling */
 .welcome-message {
     max-width: 768px;
-    margin: 40px auto;
+    margin: 120px auto 60px;
     padding: 20px;
     background: transparent;
     box-shadow: none;
@@ -98,43 +98,15 @@ body {
 
 .welcome-message h2 {
     color: var(--text-primary);
-    margin-bottom: 24px;
-    font-size: 32px;
-    font-weight: 600;
+    margin-bottom: 16px;
+    font-size: 40px;
+    font-weight: 500;
 }
 
 .welcome-message p {
-    color: var(--text-primary);
-    margin-bottom: 16px;
-}
-
-.welcome-message ul {
-    text-align: left;
-    display: inline-block;
-    margin: 20px 0;
-}
-
-.welcome-message li {
-    color: var(--text-primary);
-    margin: 8px 0;
-}
-
-.welcome-message .tip, .welcome-message .example-queries {
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 16px;
-    margin-top: 20px;
-    text-align: left;
     color: var(--text-secondary);
-}
-
-.welcome-message code {
-    background: rgba(0,0,0,0.2);
-    color: #E0E0E0;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: monospace;
+    margin-bottom: 0;
+    font-size: 18px;
 }
 
 /* Message Styling */
@@ -296,22 +268,7 @@ body {
 .message-content a { color: #19C37D; }
 .message-content code { background: black; padding: 2px 4px; border-radius: 4px; font-family: monospace; }
 
-
-.message-content a:hover {
-    color: #764ba2;
-}
-
-.message-time {
-    font-size: 11px;
-    color: #999;
-    margin-top: 5px;
-    text-align: right;
-}
-
-.message.bot .message-time {
-    text-align: left;
-}
-
+/* Typing Indicator Animation */
 .typing-indicator {
     display: none;
     padding: 10px 15px;
@@ -326,7 +283,7 @@ body {
 .typing-indicator span {
     height: 8px;
     width: 8px;
-    background: #667eea;
+    background: var(--text-secondary);
     border-radius: 50%;
     display: inline-block;
     margin-right: 5px;
@@ -349,87 +306,5 @@ body {
     30% {
         transform: translateY(-10px);
         opacity: 1;
-    }
-}
-
-.chat-input-container {
-    padding: 20px;
-    background: white;
-    border-top: 1px solid #e5e7eb;
-}
-
-#chat-form {
-    display: flex;
-    gap: 10px;
-}
-
-#message-input {
-    flex: 1;
-    padding: 14px 18px;
-    border: 2px solid #e5e7eb;
-    border-radius: 25px;
-    font-size: 15px;
-    outline: none;
-    transition: border-color 0.3s;
-}
-
-#message-input:focus {
-    border-color: #667eea;
-}
-
-#send-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-#send-btn:hover {
-    transform: scale(1.05);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-}
-
-#send-btn:active {
-    transform: scale(0.95);
-}
-
-/* Scrollbar Styling */
-.chat-messages::-webkit-scrollbar {
-    width: 8px;
-}
-
-.chat-messages::-webkit-scrollbar-track {
-    background: #f1f1f1;
-}
-
-.chat-messages::-webkit-scrollbar-thumb {
-    background: #667eea;
-    border-radius: 10px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb:hover {
-    background: #764ba2;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .chat-container {
-        height: 100vh;
-        border-radius: 0;
-    }
-    
-    .message-content {
-        max-width: 85%;
-    }
-    
-    .chat-header h1 {
-        font-size: 20px;
     }
 }

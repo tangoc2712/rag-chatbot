@@ -13,7 +13,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Event listeners
     document.getElementById('chat-form').addEventListener('submit', handleSubmit);
-    document.getElementById('clear-chat-btn').addEventListener('click', clearChat);
+    
+    const clearBtn = document.getElementById('clear-chat-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearChat);
+        console.log('Clear button listener attached');
+    } else {
+        console.error('Clear button not found!');
+    }
 });
 
 function generateSessionId() {
@@ -228,22 +235,8 @@ async function clearChat() {
         const messagesContainer = document.getElementById('chat-messages');
         messagesContainer.innerHTML = `
             <div class="welcome-message">
-                <h2>Welcome to Your E-Commerce Assistant! 👋</h2>
-                <p>I'm your AI-powered shopping companion, here to make your online shopping experience seamless and enjoyable!</p>
-                <p><strong>How I can help you:</strong></p>
-                <ul>
-                    <li>🔍 <strong>Search for products</strong> - Find exactly what you're looking for</li>
-                    <li>📦 <strong>Track your orders</strong> - Check order status and history</li>
-                    <li>⭐ <strong>Get recommendations</strong> - Discover top-rated products</li>
-                    <li>📊 <strong>Priority orders</strong> - View high-priority order information</li>
-                </ul>
-                <p class="tip">💡 <strong>Pro Tip:</strong> Set your customer ID using: <code>set customer &lt;id&gt;</code> to access your order history!</p>
-                <p class="example-queries">
-                    <strong>Try asking me:</strong><br>
-                    • "Show me laptops under $1000"<br>
-                    • "What are the best wireless headphones?"<br>
-                    • "Show my recent orders"
-                </p>
+                <h2>Hi Ngoc</h2>
+                <p>How can I help you today?</p>
             </div>
         `;
         
