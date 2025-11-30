@@ -37,31 +37,9 @@ def check_data_files():
     """Check if required data files exist"""
     base_dir = Path(__file__).parent.parent
     
-    # Check for raw data files
-    raw_dir = base_dir / 'data' / 'raw'
-    raw_files = [
-        raw_dir / 'Product_Information_Dataset.csv',
-        raw_dir / 'Order_Data_Dataset.csv'
-    ]
-    
-    # Check for processed data files
-    processed_dir = base_dir / 'data' / 'processed'
-    processed_files = [
-        processed_dir / 'processed_products.csv',
-        processed_dir / 'processed_orders.csv',
-        processed_dir / 'product_embeddings.pkl'
-    ]
-    
-    # Check if either raw or processed files exist
-    raw_missing = [str(f) for f in raw_files if not f.exists()]
-    processed_missing = [str(f) for f in processed_files if not f.exists()]
-    
-    if raw_missing and processed_missing:
-        raise FileNotFoundError(
-            f"Missing required data files. Need either:\n"
-            f"Raw files: {', '.join(raw_missing)}\n"
-            f"OR Processed files: {', '.join(processed_missing)}"
-        )
+    # Check for database connection (data is now in PostgreSQL)
+    logger.info("Data is stored in PostgreSQL database")
+    logger.info("Run 'python scripts/migrate_db.py' if you need to load data from CSV files")
 
 @click.group()
 def cli():

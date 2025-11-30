@@ -1,216 +1,127 @@
-# E-Commerce RAG Chatbot
+# E-commerce RAG Chatbot
 
-A Retrieval-Augmented Generation (RAG) based chatbot system for e-commerce product search and order management. The system provides semantic search capabilities for products and handles order queries through a conversational interface.
+A chatbot leveraging **RAG (Retrieval-Augmented Generation)** with PostgreSQL + pgvector for semantic search and Google Gemini for embeddings/LLM.
 
-## Project Overview
+## Tech Stack
 
-This project implements a chatbot that can:
-- Search products using semantic similarity
-- Handle customer order inquiries
-- Process high-priority order queries
-- Provide product recommendations
-- Interact through a web-based chat interface or command-line
-- Store chat history in PostgreSQL for persistent conversations
+- **Database**: PostgreSQL 16 + pgvector
+- **Embeddings**: Google Gemini `embedding-001` (768 dimensions)
+- **LLM**: Google Gemini `gemini-2.5-flash-lite`
+- **API**: FastAPI
+- **Pipeline**: Apache Airflow 2.8.0
 
-## Project Structure
-```
-ecommerce_rag/
-├── README.md               # Project documentation
-├── requirements.txt        # Python dependencies
-├── .env.example           # Example environment variables
-├── .gitignore             # Git ignore file
-│
-├── data/                  # Data directory
-│   ├── raw/              # Raw data files
-│   │   ├── Product_Information_Dataset.csv
-│   │   └── Order_Data_Dataset.csv
-│   └── processed/        # Processed data files
-│       ├── processed_products.csv
-│       ├── processed_orders.csv
-│       ├── product_embeddings.pkl
-│       └── preprocessing_info.txt
-│
-├── src/                  # Source code
-│   ├── __init__.py
-│   ├── config.py        # Configuration settings
-│   │
-│   ├── api/             # API implementation
-│   │   ├── __init__.py
-│   │   ├── main.py     # FastAPI main application
-│   │   └── endpoints/
-│   │       ├── __init__.py
-│   │       ├── orders.py
-│   │       └── products.py
-│   │
-│   └── rag/             # RAG implementation
-│       ├── __init__.py
-│       ├── assistant.py # Main RAG assistant
-│       └── utils.py     # Utility functions
-│
-├── scripts/             # Utility scripts
-│   ├── run.py          # Main execution script
-│   └── preprocess_data.py  # Data preprocessing script
-|   ├── chat.py         
-│   └── debug_data.py 
-│
-└── tests/              # Test files
-    ├── __init__.py
-    ├── test_api.py    # API tests
-    └── test_rag.py    # RAG system tests
-```
+## Prerequisites
 
-## Installation
+- Docker & Docker Compose
+- Python 3.11+
+- Google API Key ([Get one here](https://makersuite.google.com/app/apikey))
 
-1. Clone the repository:
+## Quick Start
+
+### 1. Environment Setup
+
 ```bash
-git clone <repository-url>
-cd ecommerce_rag
+cd Ecommerce-RAG-Chatbot
+cp .env.example .env
+# Edit .env and set your GOOGLE_API_KEY
 ```
 
-2. Create and activate a virtual environment:
+**`.env` file:**
+```env
+GOOGLE_API_KEY=your_google_api_key
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=rag_user
+DB_PASSWORD=rag_password
+DB_NAME=ecommerce_rag
+```
+
+### 2. Start PostgreSQL
+
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+docker-compose up -d postgres
 ```
 
-3. Install dependencies:
+### 3. Install Python Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Create environment file:
+### 4. Setup Database & Load Data
+
+**Prepare data files** in `data/raw/`:
+- `Product_Information_Dataset.csv`
+- `Order_Data_Dataset.csv`
+
+**Run migration:**
 ```bash
-cp .env.example .env
-# Edit .env with your configuration
+python scripts/migrate_db.py
 ```
 
-## Data Setup
+This will:
+- Create tables with pgvector extension
+- Load and preprocess CSV data
+- Generate embeddings via Gemini API
+- Insert data into PostgreSQL
 
-1. Place your raw data files in the `data/raw/` directory:
-   - `Product_Information_Dataset.csv`
-   - `Order_Data_Dataset.csv`
+### 5. Start API Server
 
-2. Run data preprocessing:
-```bash
-python scripts/preprocess_data.py
-```
-
-## Running the Application
-
-### Starting the API Server
-```bash
-python scripts/run.py api
-```
-The API will be available at http://localhost:8000
-
-### Using the Web Chat Interface (Recommended)
-
-1. First, create the chat history table:
-```bash
-python scripts/create_chat_history_table.py
-```
-
-2. Start the API server:
 ```bash
 python scripts/run.py api
+# API: http://localhost:8000
+# Docs: http://localhost:8000/docs
+# Web Chat: http://localhost:8000/static/index.html
 ```
 
-3. Open your browser and navigate to:
+## Project Structure
+
 ```
-http://localhost:8000/static/index.html
-```
-
-**Features:**
-- 💬 Modern chat interface
-- 💾 Persistent chat history
-- 🔄 Session management
-- 📱 Responsive design
-
-For detailed information, see [WEB_CHAT_GUIDE.md](WEB_CHAT_GUIDE.md)
-
-### Using the Chat Interface
-```bash
-python scripts/run.py chat
-```
-
-**OR** use the web interface at http://localhost:8000/static/index.html (recommended)
-
-Example chat commands:
-```
-# Set customer ID
-set customer 37077
-
-# Product queries
-What are the top 5 highly-rated guitar products?
-Show me microphones under $200
-
-# Order queries
-What are the details of my last order?
-Fetch 5 most recent high-priority orders
+├── airflow/
+│   └── dags/                   # Airflow DAGs (optional)
+├── data/
+│   └── raw/                    # Raw CSV files
+├── scripts/
+│   ├── migrate_db.py           # Database setup & migration
+│   ├── create_chat_history_table.py
+│   └── run.py                  # Run API server
+├── src/
+│   ├── api/                    # FastAPI endpoints
+│   ├── etl/                    # ETL modules
+│   └── rag/                    # RAG assistant
+├── static/                     # Web UI
+├── docker-compose.yml
+└── requirements.txt
 ```
 
 ## API Endpoints
 
-### Product Endpoints
-- `GET /products/search`: Search products by query
-- `GET /products/category/{category}`: Get products by category
-- `GET /products/top-rated`: Get top-rated products
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/chat/message` | Send message to chatbot |
+| GET | `/products/search` | Search products |
+| GET | `/orders/customer/{id}` | Get customer orders |
 
-### Order Endpoints
-- `GET /orders/customer/{customer_id}`: Get customer orders
-- `GET /orders/priority/{priority}`: Get orders by priority
+## Using Airflow (Optional)
 
-### Chat Endpoints
-- `POST /chat/message`: Send a message to the chatbot
-- `GET /chat/history/{session_id}`: Get chat history for a session
-- `GET /chat/history/customer/{customer_id}`: Get all chat history for a customer
-- `DELETE /chat/history/{session_id}`: Delete chat history for a session
-
-See [WEB_CHAT_GUIDE.md](WEB_CHAT_GUIDE.md) for detailed API documentation.
-
-## Testing
-
-Run tests using pytest:
 ```bash
-pytest tests/
+docker-compose up -d
+# Airflow UI: http://localhost:8080 (admin/admin)
 ```
 
-## Components
+**Available DAGs:**
+- `embedding_pipeline_dag`: Generate embeddings (configurable: process_from, process_to, batch_size)
+- `data_ingestion_dag`: Daily data loading
+- `maintenance_dag`: Weekly cleanup
 
-### RAG Assistant
-- Located in `src/rag/assistant.py`
-- Handles semantic search and query processing
-- Uses sentence transformers for embeddings
-- Processes both product and order queries
+## Troubleshooting
 
-### API Service
-- Located in `src/api/`
-- Implements RESTful endpoints
-- Handles data validation and error handling
-- Provides documentation via Swagger UI
-
-### Data Processing
-- Located in `scripts/preprocess_data.py`
-- Cleans and preprocesses raw data
-- Creates embeddings for semantic search
-- Saves processed data for quick access
-
-## Environment Variables
-
-Required environment variables in `.env`:
-```
-HOST=0.0.0.0
-PORT=8000
-API_BASE_URL=http://localhost:8000
-DATA_DIR=./data
-EMBEDDING_MODEL=all-MiniLM-L6-v2
+**Database connection error:**
+```bash
+docker-compose ps
+docker-compose logs postgres
 ```
 
-## Dependencies
-
-Key dependencies:
-- FastAPI: Web framework
-- sentence-transformers: Semantic search
-- pandas: Data processing
-- pytest: Testing
-- uvicorn: ASGI server
+**Embedding errors:**
+- Verify `GOOGLE_API_KEY` is set correctly
+- Check API quota at [Google Cloud Console](https://console.cloud.google.com/apis/dashboard)

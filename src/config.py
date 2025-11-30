@@ -13,19 +13,10 @@ class Settings(BaseSettings):
     # Data Paths
     DATA_DIR: Path = Path(__file__).parent.parent / "data"
     RAW_DATA_DIR: Path = DATA_DIR / "raw"
-    PROCESSED_DATA_DIR: Path = DATA_DIR / "processed"
     
-    # Use processed data if available, otherwise use raw data
-    PRODUCT_DATA_PATH: Path = (
-        PROCESSED_DATA_DIR / "processed_products.csv" 
-        if (PROCESSED_DATA_DIR / "processed_products.csv").exists()
-        else RAW_DATA_DIR / "Product_Information_Dataset.csv"
-    )
-    ORDER_DATA_PATH: Path = (
-        PROCESSED_DATA_DIR / "processed_orders.csv"
-        if (PROCESSED_DATA_DIR / "processed_orders.csv").exists()
-        else RAW_DATA_DIR / "Order_Data_Dataset.csv"
-    )
+    # Data files
+    PRODUCT_DATA_PATH: Path = RAW_DATA_DIR / "Product_Information_Dataset.csv"
+    ORDER_DATA_PATH: Path = RAW_DATA_DIR / "Order_Data_Dataset.csv"
     
     # Model Settings
     EMBEDDING_MODEL: str = "models/embedding-001"

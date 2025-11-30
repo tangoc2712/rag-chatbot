@@ -4,7 +4,6 @@ import numpy as np
 from pathlib import Path
 import shutil
 from datetime import datetime
-from sentence_transformers import SentenceTransformer
 
 from src.rag.assistant import ECommerceRAG
 from src.rag.utils import (

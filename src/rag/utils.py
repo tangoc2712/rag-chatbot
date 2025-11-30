@@ -2,7 +2,6 @@ import pandas as pd
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 import numpy as np
-from sentence_transformers import util
 
 def preprocess_text(text: str) -> str:
     """
@@ -39,7 +38,12 @@ def calculate_semantic_similarity(
     Returns:
         Array of similarity scores
     """
-    return util.cos_sim(query_embedding, document_embeddings)[0]
+    # Normalize vectors
+    query_norm = query_embedding / np.linalg.norm(query_embedding)
+    doc_norms = document_embeddings / np.linalg.norm(document_embeddings, axis=1, keepdims=True)
+    
+    # Compute cosine similarity
+    return np.dot(doc_norms, query_norm)
 
 def format_price(price: float) -> str:
     """

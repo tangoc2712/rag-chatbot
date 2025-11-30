@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+Database migration script for E-commerce RAG Chatbot.
+Loads CSV data, generates embeddings via Gemini, and stores in PostgreSQL.
+"""
 import os
 import sys
 import pandas as pd
@@ -9,12 +13,13 @@ import google.generativeai as genai
 from pathlib import Path
 import logging
 import time
+from typing import Tuple
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.config import Settings
-from scripts.preprocess_data import load_datasets, preprocess_product_data, preprocess_order_data
+from src.database import get_db_connection
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -22,14 +27,121 @@ logger = logging.getLogger(__name__)
 
 settings = Settings()
 
-def get_db_connection():
-    return psycopg2.connect(
-        host=settings.DB_HOST,
-        port=settings.DB_PORT,
-        user=settings.DB_USER,
-        password=settings.DB_PASSWORD,
-        dbname=settings.DB_NAME
+
+# ============== Data Loading & Preprocessing ==============
+
+def load_datasets(product_path: Path, order_path: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Load and perform initial cleaning of datasets"""
+    logger.info("Loading datasets...")
+    
+    product_df = pd.read_csv(product_path)
+    order_df = pd.read_csv(order_path)
+    
+    logger.info(f"Product CSV columns: {product_df.columns.tolist()}")
+    logger.info(f"Order CSV columns: {order_df.columns.tolist()}")
+    
+    product_df.fillna('', inplace=True)
+    order_df.fillna('', inplace=True)
+    
+    return product_df, order_df
+
+
+def preprocess_product_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Preprocess product dataset"""
+    logger.info("Preprocessing product data...")
+    
+    # Create combined text field for semantic search
+    df['combined_text'] = (
+        df['title'].str.strip() + ' ' +
+        df['description'].str.strip() + ' ' +
+        df['main_category'].str.strip() + ' ' +
+        df['categories'].str.strip()
     )
+    
+    # Clean numeric fields
+    df['Price'] = pd.to_numeric(df['price'], errors='coerce')
+    df['Rating'] = pd.to_numeric(df['average_rating'], errors='coerce')
+    df['Rating_Count'] = pd.to_numeric(df['rating_number'], errors='coerce')
+    
+    # Remove products with invalid prices or ratings
+    df = df[df['Price'].notna()]
+    df = df[df['Rating'].notna()]
+    df = df[df['Price'] > 0]
+    df = df[df['Rating'].between(0, 5)]
+    
+    # Create a unique product ID if not present
+    if 'Product_ID' not in df.columns:
+        df['Product_ID'] = range(1, len(df) + 1)
+    
+    # Extract features as a list
+    df['feature_list'] = df['features'].apply(lambda x: str(x).split('|') if pd.notnull(x) else [])
+    
+    # Rename columns to match expected schema
+    df = df.rename(columns={
+        'title': 'Product_Title',
+        'main_category': 'Category',
+        'description': 'Description',
+        'price': 'Price',
+        'average_rating': 'Rating',
+        'rating_number': 'Rating_Count',
+        'store': 'Store',
+        'parent_asin': 'Product_ID'
+    })
+    
+    columns_to_keep = [
+        'Product_ID', 'Product_Title', 'Description', 'Category',
+        'Price', 'Rating', 'Rating_Count', 'Store', 'feature_list',
+        'combined_text'
+    ]
+    
+    df = df[columns_to_keep]
+    return df
+
+
+def preprocess_order_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Preprocess order dataset"""
+    logger.info("Preprocessing order data...")
+    
+    # Convert date and time fields
+    df['Order_DateTime'] = pd.to_datetime(df['Order_Date'] + ' ' + df['Time'])
+    
+    # Clean numeric fields
+    numeric_columns = ['Sales', 'Quantity', 'Discount', 'Profit', 'Shipping_Cost']
+    for col in numeric_columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Remove orders with invalid amounts
+    df = df[df['Sales'].notna() & df['Shipping_Cost'].notna()]
+    df = df[df['Sales'] > 0]
+    
+    # Create a unique order ID if not present
+    if 'Order_ID' not in df.columns:
+        df['Order_ID'] = range(1, len(df) + 1)
+    
+    # Standardize categorical fields
+    df['Order_Priority'] = df['Order_Priority'].str.strip().str.title()
+    df['Payment_method'] = df['Payment_method'].str.strip().str.title()
+    df['Customer_Login_type'] = df['Customer_Login_type'].str.strip().str.title()
+    df['Gender'] = df['Gender'].str.strip().str.title()
+    df['Device_Type'] = df['Device_Type'].str.strip().str.title()
+    
+    # Calculate additional metrics
+    df['Total_Amount'] = df['Sales'] * df['Quantity']
+    df['Net_Profit'] = df['Profit'] - df['Shipping_Cost']
+    
+    columns_to_keep = [
+        'Order_ID', 'Order_DateTime', 'Customer_Id', 'Gender',
+        'Device_Type', 'Customer_Login_type', 'Product_Category',
+        'Product', 'Quantity', 'Sales', 'Total_Amount', 'Discount',
+        'Profit', 'Net_Profit', 'Shipping_Cost', 'Order_Priority',
+        'Payment_method'
+    ]
+    
+    df = df[columns_to_keep]
+    return df
+
+
+# ============== Database Functions ==============
 
 def setup_database():
     """Create tables with vector extension"""
@@ -125,17 +237,9 @@ def generate_embeddings(text_list, batch_size=100):
 
 def migrate_data():
     """Main migration function"""
-    # 1. Load and Preprocess Data
     logger.info("Loading and preprocessing data...")
-    # We use the raw paths from config to ensure we start fresh or use existing logic
-    # Note: load_datasets expects paths, so we use the ones from settings
-    # But settings.PRODUCT_DATA_PATH might point to processed. 
-    # Let's use RAW_DATA_DIR to be safe if we want to re-process, 
-    # or just use the load_datasets logic which handles raw files.
     
-    # Actually, let's look at how load_datasets is called in preprocess_data.py
-    # It takes product_path and order_path.
-    # We should probably use the raw files to ensure we have the source of truth.
+    # Load from raw data directory
     product_raw = settings.RAW_DATA_DIR / "Product_Information_Dataset.csv"
     order_raw = settings.RAW_DATA_DIR / "Order_Data_Dataset.csv"
     
@@ -145,55 +249,35 @@ def migrate_data():
 
     product_df, order_df = load_datasets(product_raw, order_raw)
     product_df = preprocess_product_data(product_df)
-    # Fix potential duplicate columns from preprocessing
     product_df = product_df.loc[:, ~product_df.columns.duplicated()]
-    # Ensure integer columns don't have NaNs
     product_df['Rating_Count'] = product_df['Rating_Count'].fillna(0).astype(int)
     
     order_df = preprocess_order_data(order_df)
     order_df = order_df.loc[:, ~order_df.columns.duplicated()]
-    # Ensure integer columns don't have NaNs
     order_df['Quantity'] = order_df['Quantity'].fillna(0).astype(int)
-    
-    # Limit data for testing if needed (optional, but good for "dummy a bunch of data")
-    # The user said "dummy a bunch of data", implying maybe not all of it? 
-    # But usually migration means all. I'll stick to all for now, or maybe top 1000 if it's huge.
-    # The dataset seems to be ~3k products and ~50k orders. 3k is fine. 50k might take a while for embeddings.
-    # Let's limit orders to 1000 for now to save API quota/time, or ask user. 
-    # I'll process all products (critical for RAG) and maybe a subset of orders?
-    # For now, I'll process all products and top 1000 orders to be safe on quota.
     
     logger.info(f"Processing {len(product_df)} products and {len(order_df)} orders")
     
-    # 2. Generate Embeddings
+    # Generate embeddings
     logger.info("Generating product embeddings...")
     product_embeddings = generate_embeddings(product_df['combined_text'].tolist())
     
     logger.info("Generating order embeddings...")
-    # Create text representation for orders
     order_texts = (
         order_df['Product'] + " " + 
         order_df['Product_Category'] + " " + 
         order_df['Order_Priority']
     ).tolist()
-    # Limit orders to 500 for this demo to avoid hitting rate limits hard
-    order_limit = 500
-    order_df = order_df.head(order_limit)
-    order_texts = order_texts[:order_limit]
-    
     order_embeddings = generate_embeddings(order_texts)
     
-    # 3. Insert into Postgres
+    # Insert into PostgreSQL
     conn = get_db_connection()
     cur = conn.cursor()
     
     try:
-        # Insert Products
         logger.info("Inserting products...")
         product_data = []
         for (idx, row), embedding in zip(product_df.iterrows(), product_embeddings):
-            # feature_list is a list, we need to ensure it's formatted for Postgres array
-            # psycopg2 handles lists automatically
             product_data.append((
                 str(row['Product_ID']),
                 row['Product_Title'],
@@ -215,7 +299,6 @@ def migrate_data():
             ) VALUES %s
         """, product_data)
         
-        # Insert Orders
         logger.info("Inserting orders...")
         order_data = []
         for (idx, row), embedding in zip(order_df.iterrows(), order_embeddings):
@@ -261,8 +344,6 @@ def migrate_data():
         conn.close()
 
 if __name__ == "__main__":
-    # Wait for DB to be ready
-    time.sleep(5)
     try:
         setup_database()
         migrate_data()

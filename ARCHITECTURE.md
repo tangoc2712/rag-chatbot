@@ -5,8 +5,8 @@ This document outlines the system architecture of the E-Commerce RAG Chatbot pro
 ## System Overview
 
 The E-Commerce RAG Chatbot is designed to provide intelligent product search and order management capabilities. The system operates in two main modes:
-1.  **REST API**: A FastAPI-based service providing structured access to product and order data using keyword search and filtering.
-2.  **RAG Chat Interface**: A CLI-based conversational assistant that uses Retrieval-Augmented Generation (RAG) principles and semantic search to answer natural language queries.
+1.  **REST API**: A FastAPI-based service providing structured access to product and order data.
+2.  **RAG Chat Interface**: A conversational assistant that uses Retrieval-Augmented Generation (RAG) with PostgreSQL + pgvector for semantic search and Google Gemini for LLM responses.
 
 ## Architecture Diagram
 
@@ -14,31 +14,36 @@ The E-Commerce RAG Chatbot is designed to provide intelligent product search and
 graph TD
     subgraph Data Layer
         Raw[Raw CSV Data]
-        Processed[Processed Data]
-        Embeddings[Vector Embeddings]
+        PG[(PostgreSQL + pgvector)]
+    end
+
+    subgraph ETL Pipeline
+        Migrate[migrate_db.py / Airflow DAG]
+        Gemini_Emb[Gemini Embedding API]
     end
 
     subgraph Core Logic
-        Preprocess[Preprocessing Script]
         RAG[RAG Engine]
         API_Logic[API Logic]
     end
 
     subgraph Interfaces
-        CLI[CLI Chat Interface]
+        Web[Web Chat Interface]
         API[FastAPI Server]
+        Airflow[Airflow UI]
     end
 
-    Raw --> Preprocess
-    Preprocess --> Processed
-    Preprocess --> Embeddings
+    Raw --> Migrate
+    Migrate --> PG
+    Migrate --> Gemini_Emb
+    Gemini_Emb --> PG
 
-    Processed --> API_Logic
+    PG --> API_Logic
     API_Logic --> API
 
-    Processed --> RAG
-    Embeddings --> RAG
-    RAG --> CLI
+    PG --> RAG
+    RAG --> Web
+    RAG --> API
 ```
 
 ## Data Lineage
@@ -52,74 +57,97 @@ classDiagram
         +Order_Data_Dataset.csv
     }
 
-    class Preprocessor {
-        +preprocess_data.py
-        +clean_products()
-        +clean_orders()
+    class MigrateDB {
+        +migrate_db.py
+        +setup_database()
         +generate_embeddings()
+        +insert_products()
+        +insert_orders()
     }
 
-    class ProcessedData {
-        +processed_products.csv
-        +processed_orders.csv
-        +product_embeddings.pkl
+    class PostgreSQL {
+        +products table
+        +orders table
+        +chat_history table
+        +vector(768) embeddings
+    }
+
+    class GeminiAPI {
+        +embedding-001
+        +gemini-2.5-flash-lite
     }
 
     class RAGSystem {
         +ECommerceRAG
-        +semantic_search()
+        +semantic_search() via pgvector
         +get_customer_orders()
+        +generate_llm_response()
     }
 
     class APIService {
         +FastAPI
         +search_products()
         +get_orders()
+        +chat endpoint
     }
 
     class UserInterface {
-        +CLI Chat
+        +Web Chat UI
         +REST API
+        +Airflow DAGs
     }
 
-    RawData ..> Preprocessor : Input
-    Preprocessor ..> ProcessedData : Output
-    ProcessedData ..> RAGSystem : Loads Data & Embeddings
-    ProcessedData ..> APIService : Loads Data
-    RAGSystem ..> UserInterface : Semantic Responses
-    APIService ..> UserInterface : JSON Responses
+    RawData ..> MigrateDB : Input
+    MigrateDB ..> GeminiAPI : Generate embeddings
+    MigrateDB ..> PostgreSQL : Store data + embeddings
+    GeminiAPI ..> PostgreSQL : vector(768)
+    PostgreSQL ..> RAGSystem : Query with pgvector
+    GeminiAPI ..> RAGSystem : LLM responses
+    RAGSystem ..> APIService : Process queries
+    APIService ..> UserInterface : JSON/Chat Responses
 ```
 
 ## Component Details
 
 ### 1. Data Layer
 *   **Raw Data**: Located in `data/raw/`, containing original CSV files for products and orders.
-*   **Preprocessing**: The `scripts/preprocess_data.py` script is the ETL pipeline. It:
-    *   Cleans and normalizes text fields.
-    *   Converts data types (prices, dates).
-    *   Generates vector embeddings for product descriptions using `sentence-transformers`.
-*   **Processed Data**: Stored in `data/processed/` for efficient loading by the application.
+*   **PostgreSQL + pgvector**: All data stored in PostgreSQL with vector embeddings.
+    *   `products` table: Product info + `embedding vector(768)`
+    *   `orders` table: Order info + `embedding vector(768)`
+    *   `chat_history` table: Conversation history
 
-### 2. RAG Engine (`src/rag/`)
+### 2. ETL Pipeline
+*   **migrate_db.py**: Main script for data migration
+    *   Loads raw CSV files
+    *   Creates database schema with pgvector extension
+    *   Generates embeddings via Google Gemini `embedding-001`
+    *   Inserts data with embeddings into PostgreSQL
+*   **Airflow DAGs** (optional):
+    *   `embedding_pipeline_dag`: Scheduled embedding generation
+    *   `data_ingestion_dag`: Daily data loading
+    *   `maintenance_dag`: Weekly cleanup and health checks
+
+### 3. RAG Engine (`src/rag/`)
 *   **Core Logic**: Implemented in `assistant.py`.
 *   **Functionality**:
-    *   Loads processed CSVs and pickle files.
-    *   Performs **semantic search** by encoding user queries and calculating cosine similarity with product embeddings using `sentence-transformers`.
-    *   Handles order queries by filtering the order DataFrame.
-    *   **Generates natural language responses** using Google's Gemini LLM (gemini-2.5-flash).
-    *   Falls back to template-based responses if the API key is not configured.
+    *   Performs **semantic search** using pgvector's cosine distance (`<=>` operator)
+    *   Generates query embeddings via Gemini `embedding-001`
+    *   Handles order queries by filtering PostgreSQL tables
+    *   **Generates natural language responses** using Google Gemini LLM (gemini-2.5-flash-lite)
 *   **LLM Integration**:
-    *   Uses `google-generativeai` SDK to interact with Gemini.
-    *   Constructs prompts with user query and retrieved context.
-    *   Returns conversational, context-aware responses.
+    *   Uses `google-generativeai` SDK to interact with Gemini
+    *   Constructs prompts with user query and retrieved context
+    *   Returns conversational, context-aware responses
 
-### 3. API Service (`src/api/`)
-*   **Framework**: FastAPI.
+### 4. API Service (`src/api/`)
+*   **Framework**: FastAPI
 *   **Endpoints**:
-    *   `/products`: Supports keyword search, category filtering, and sorting.
-    *   `/orders`: Retrieves orders by customer ID or priority.
-*   **Logic**: Directly queries the processed Pandas DataFrames. Note that the current API implementation uses keyword matching (`str.contains`) rather than the semantic search used by the RAG assistant.
+    *   `/api/chat`: Chat with RAG assistant
+    *   `/api/products`: Product search and filtering
+    *   `/api/orders`: Order queries by customer ID or priority
+*   **Logic**: Queries PostgreSQL directly, uses pgvector for semantic search
 
-### 4. Interfaces
-*   **CLI Chat**: An interactive command-line tool (`scripts/chat.py`) that interfaces with the RAG engine to simulate a chatbot experience.
-*   **Swagger UI**: Auto-generated API documentation available at `http://localhost:8000/docs` when running the API.
+### 5. Interfaces
+*   **Web Chat UI**: Modern chat interface at `http://localhost:8000/static/index.html`
+*   **Swagger UI**: Auto-generated API documentation at `http://localhost:8000/docs`
+*   **Airflow UI**: DAG management at `http://localhost:8080` (admin/admin)
