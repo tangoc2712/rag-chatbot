@@ -4,43 +4,61 @@ This directory contains Airflow DAGs for automated embedding generation and data
 
 ## Overview
 
-The DAGs handle daily embedding generation for products and orders stored in PostgreSQL, using Google Gemini API for vector embeddings that power semantic search capabilities.
+The DAGs handle daily embedding generation for all tables in both local and cloud PostgreSQL databases, using Google Gemini API for vector embeddings that power semantic search capabilities.
 
-## DAGs
+## Architecture
 
-### 1. `product_embedding_dag.py`
-- **Schedule:** Daily at 2:00 AM UTC
-- **Purpose:** Generate embeddings for products with NULL embeddings
-- **Tasks:**
-  1. Fetch products without embeddings from PostgreSQL
-  2. Preprocess product data (create combined_text from title, description, category)
-  3. Generate 768-dimensional embeddings using Gemini API (batch size: 100)
-  4. Update products table with new embeddings
-  5. Log summary statistics
+### Local PostgreSQL DAGs (localhost:5432)
+- `product_embedding_dag.py` - Products table (2:00 AM)
+- `order_embedding_dag.py` - Orders table (3:00 AM)
 
-### 2. `order_embedding_dag.py`
-- **Schedule:** Daily at 3:00 AM UTC
-- **Purpose:** Generate embeddings for orders with NULL embeddings
-- **Tasks:**
-  1. Fetch orders without embeddings from PostgreSQL
-  2. Preprocess order data (create text from product, category, priority)
-  3. Generate 768-dimensional embeddings using Gemini API (batch size: 100)
-  4. Update orders table with new embeddings
-  5. Log summary statistics
+### Cloud PostgreSQL DAGs (Google Cloud SQL)
+**HIGH Priority (4:00-5:00 AM):**
+- `cloud_product_embedding_dag.py` - Products table
+- `cloud_product_review_embedding_dag.py` - Product reviews table
+- `cloud_order_embedding_dag.py` - Orders table
+- `cloud_event_embedding_dag.py` - User events table
 
-## Utilities
+**MEDIUM Priority (5:00-6:30 AM):**
+- `cloud_category_embedding_dag.py` - Categories table
+- `cloud_user_embedding_dag.py` - Users table
+- `cloud_order_item_embedding_dag.py` - Order items table
+- `cloud_cart_embedding_dag.py` - Shopping carts table
+- `cloud_payment_embedding_dag.py` - Payments table
+- `cloud_shipment_embedding_dag.py` - Shipments table
+- `cloud_inventory_embedding_dag.py` - Inventory table
 
-### `utils/embedding_generator.py`
-- `EmbeddingGenerator` class: Handles Gemini API integration
-- Batch processing (100 texts per API call)
+**LOW Priority (6:30-7:30 AM):**
+- `cloud_cart_item_embedding_dag.py` - Cart items table
+- `cloud_coupon_embedding_dag.py` - Coupons table
+- `cloud_role_embedding_dag.py` - User roles table
+
+## Configuration Management
+
+All DAG configurations are externalized to JSON files in `airflow/config/`:
+
+- **`local_var.json`** - Local PostgreSQL configuration
+- **`stg_var.json`** - Cloud PostgreSQL (staging) configuration
+
+**Security:** Credentials are stored in Airflow Connections, NOT in config files.
+
+See [airflow/config/README.md](config/README.md) for detailed configuration instructions.
+
+## DAG Structure
+
+All DAGs follow a consistent 3-task pattern:
+
+1. **Fetch Task:** Query database for records with NULL embeddings
+2. **Generate Task:** Preprocess data and generate embeddings via Gemini API
+3. **Update Task:** Write embeddings back to database
+
+### Common Features
+- Incremental processing (only NULL embeddings)
+- Batch processing (100 local, 50 cloud)
 - Rate limiting (1 second between batches)
-- Error handling and logging
-
-### `utils/data_preprocessor.py`
-- `DataPreprocessor` class: Handles data preprocessing
-- `preprocess_product_records()`: Creates combined_text for products
-- `preprocess_order_records()`: Creates embedding_text for orders
-- Includes CSV preprocessing functions for backward compatibility
+- Error handling and retry logic
+- Comprehensive logging
+- XCom for inter-task data transfer
 
 ## Setup Instructions
 
@@ -461,10 +479,104 @@ docker-compose build
 docker-compose up -d
 ```
 
+## Cloud PostgreSQL DAG Details
+
+### Preprocessing Strategies
+
+Each cloud table has a custom preprocessing function in `utils/data_preprocessor.py`:
+
+| Table | Preprocessing Function | Combined Text Format |
+|-------|----------------------|---------------------|
+| products | `preprocess_cloud_product_records` | name + description + category + price |
+| categories | `preprocess_cloud_category_records` | category_name + type + parent hierarchy |
+| product_reviews | `preprocess_cloud_review_records` | product + rating + review_text + user |
+| users | `preprocess_cloud_user_records` | username + email + job + location + age |
+| orders | `preprocess_cloud_order_records` | order_id + status + total + user + date |
+| order_items | `preprocess_cloud_order_item_records` | order + product + quantity + price |
+| carts | `preprocess_cloud_cart_records` | user + status + total + date |
+| cart_items | `preprocess_cloud_cart_item_records` | cart + product + quantity + price |
+| payments | `preprocess_cloud_payment_records` | payment_id + amount + method + status |
+| shipments | `preprocess_cloud_shipment_records` | tracking + carrier + status + delivery |
+| inventory | `preprocess_cloud_inventory_records` | product + warehouse + stock + updated |
+| coupons | `preprocess_cloud_coupon_records` | code + discount_type + value + validity |
+| events | `preprocess_cloud_event_records` | event_type + user + session + metadata |
+| roles | `preprocess_cloud_role_records` | role_name + is_active + created_at |
+
+### Schedule Rationale
+
+**HIGH Priority (4:00-5:00 AM):**
+- Customer-facing data (products, reviews, orders)
+- User activity tracking (events)
+- Critical for search and recommendations
+
+**MEDIUM Priority (5:00-6:30 AM):**
+- Supporting data (users, categories, inventory)
+- Transactional data (payments, shipments, order items)
+- Important but not time-critical
+
+**LOW Priority (6:30-7:30 AM):**
+- Reference data (roles, coupons)
+- Intermediate data (cart items)
+- Low update frequency
+
+### Batch Sizes
+
+- **Local PostgreSQL:** 100 texts/batch (faster local network)
+- **Cloud PostgreSQL:** 50 texts/batch (conservative for cloud latency and API limits)
+
+## Utilities Reference
+
+### `utils/embedding_generator.py`
+
+**EmbeddingGenerator Class:**
+- `generate_embeddings(texts, batch_size, rate_limit_seconds)` - Batch generate embeddings
+- `generate_query_embedding(query)` - Single query embedding
+- Uses Google Gemini `models/embedding-001` (768 dimensions)
+- Automatic retry logic
+- Rate limiting to avoid API throttling
+
+### `utils/data_preprocessor.py`
+
+**DataPreprocessor Class:**
+
+**Local PostgreSQL:**
+- `preprocess_product_records(records)` - Local products
+- `preprocess_order_records(records)` - Local orders
+
+**Cloud PostgreSQL:**
+- `preprocess_cloud_product_records(records)` - Cloud products
+- `preprocess_cloud_category_records(records)` - Cloud categories
+- `preprocess_cloud_review_records(records)` - Cloud reviews
+- `preprocess_cloud_user_records(records)` - Cloud users
+- `preprocess_cloud_order_records(records)` - Cloud orders
+- `preprocess_cloud_order_item_records(records)` - Cloud order items
+- `preprocess_cloud_cart_records(records)` - Cloud carts
+- `preprocess_cloud_cart_item_records(records)` - Cloud cart items
+- `preprocess_cloud_payment_records(records)` - Cloud payments
+- `preprocess_cloud_shipment_records(records)` - Cloud shipments
+- `preprocess_cloud_inventory_records(records)` - Cloud inventory
+- `preprocess_cloud_coupon_records(records)` - Cloud coupons
+- `preprocess_cloud_event_records(records)` - Cloud events
+- `preprocess_cloud_role_records(records)` - Cloud roles
+
+All functions return pandas DataFrames with `combined_text` field for embedding.
+
+## Configuration Files
+
+See [airflow/config/README.md](config/README.md) for:
+- Configuration file structure
+- Setup instructions
+- Connection management
+- Security best practices
+- Schedule overview
+
 ## Support
 
 For issues or questions:
 1. Check Airflow logs: `~/airflow/logs/` or `docker-compose logs`
 2. Review DAG execution logs in Airflow UI
 3. Verify database connectivity and data integrity
-4. Consult project documentation in `/docs`
+4. Check configuration files in `airflow/config/`
+5. Verify PostgreSQL connections in Airflow UI (Admin → Connections)
+6. Consult project documentation in `/docs`
+

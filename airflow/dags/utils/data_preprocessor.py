@@ -87,6 +87,263 @@ class DataPreprocessor:
         logger.info(f"Preprocessed {len(df)} orders with valid embedding_text")
         return df
     
+    # ==================== Cloud PostgreSQL Preprocessing Functions ====================
+    
+    @staticmethod
+    def preprocess_cloud_product_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess cloud products: name + description + category_id + price"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            df['name'].fillna('').astype(str) + ' ' +
+            df['description'].fillna('').astype(str) + ' ' +
+            'Category: ' + df['category_id'].fillna('').astype(str) + ' ' +
+            'Price: ' + df['price'].fillna(0).astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} cloud products")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_category_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess categories: name + type + parent_category_id"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            df['name'].fillna('').astype(str) + ' ' +
+            'Type: ' + df['type'].fillna('').astype(str) + ' ' +
+            'Parent: ' + df['parent_category_id'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} categories")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_review_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess reviews: product + rating + review_text + reviewer"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Product: ' + df['product_id'].fillna('').astype(str) + ' ' +
+            'Rating: ' + df['rating'].fillna(0).astype(str) + '/5 ' +
+            df['review_text'].fillna('').astype(str) + ' ' +
+            'User: ' + df['user_id'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} reviews")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_user_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess users: full_name + email + job + gender"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            df['full_name'].fillna('').astype(str) + ' ' +
+            df['email'].fillna('').astype(str) + ' ' +
+            'Job: ' + df['job'].fillna('').astype(str) + ' ' +
+            'Gender: ' + df['gender'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} users")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_order_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess orders: order_id + status + order_total + items + customer"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Order: ' + df['order_id'].fillna('').astype(str) + ' ' +
+            'Status: ' + df['status'].fillna('').astype(str) + ' ' +
+            'Total: ' + df['order_total'].fillna(0).astype(str) + ' ' +
+            'Customer: ' + df['user_id'].fillna('').astype(str) + ' ' +
+            'Date: ' + df['created_at'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} orders")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_order_item_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess order items: order + product + quantity + unit_price"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Order: ' + df['order_id'].fillna('').astype(str) + ' ' +
+            'Product: ' + df['product_id'].fillna('').astype(str) + ' ' +
+            'Qty: ' + df['quantity'].fillna(0).astype(str) + ' ' +
+            'Price: ' + df['unit_price'].fillna(0).astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} order items")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_cart_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess carts: user + status + total_price + items"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'User: ' + df['user_id'].fillna('').astype(str) + ' ' +
+            'Status: ' + df['status'].fillna('').astype(str) + ' ' +
+            'Total: ' + df['total_price'].fillna(0).astype(str) + ' ' +
+            'Date: ' + df['created_at'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} carts")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_cart_item_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess cart items: cart + product + quantity + unit_price"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Cart: ' + df['cart_id'].fillna('').astype(str) + ' ' +
+            'Product: ' + df['product_id'].fillna('').astype(str) + ' ' +
+            'Qty: ' + df['quantity'].fillna(0).astype(str) + ' ' +
+            'Price: ' + df['unit_price'].fillna(0).astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} cart items")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_payment_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess payments: payment_id + amount + method + status"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Payment: ' + df['payment_id'].fillna('').astype(str) + ' ' +
+            'Amount: ' + df['amount'].fillna(0).astype(str) + ' ' +
+            'Method: ' + df['method'].fillna('').astype(str) + ' ' +
+            'Status: ' + df['status'].fillna('').astype(str) + ' ' +
+            'Order: ' + df['order_id'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} payments")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_shipment_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess shipments: tracking + carrier_id + status + delivery_date"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Tracking: ' + df['tracking_number'].fillna('').astype(str) + ' ' +
+            'Carrier: ' + df['carrier_id'].fillna('').astype(str) + ' ' +
+            'Status: ' + df['status'].fillna('').astype(str) + ' ' +
+            'Shipped: ' + df['shipped_at'].fillna('').astype(str) + ' ' +
+            'Delivered: ' + df['delivered_at'].fillna('').astype(str) + ' ' +
+            'Order: ' + df['order_id'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} shipments")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_inventory_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess inventory: product + warehouse_id + quantity"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Product: ' + df['product_id'].fillna('').astype(str) + ' ' +
+            'Warehouse: ' + df['warehouse_id'].fillna('').astype(str) + ' ' +
+            'Stock: ' + df['quantity'].fillna(0).astype(str) + ' ' +
+            'Updated: ' + df['last_updated'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} inventory records")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_coupon_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess coupons: code + discount_type + value + validity"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Code: ' + df['code'].fillna('').astype(str) + ' ' +
+            'Type: ' + df['discount_type'].fillna('').astype(str) + ' ' +
+            'Value: ' + df['value'].fillna(0).astype(str) + ' ' +
+            'Valid: ' + df['valid_from'].fillna('').astype(str) + ' to ' + df['valid_to'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} coupons")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_event_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess events: event_type + user + session + metadata"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Event: ' + df['event_type'].fillna('').astype(str) + ' ' +
+            'User: ' + df['user_id'].fillna('').astype(str) + ' ' +
+            'Session: ' + df['session_id'].fillna('').astype(str) + ' ' +
+            'Time: ' + df['ts'].fillna('').astype(str) + ' ' +
+            'Metadata: ' + df['metadata'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} events")
+        return df
+    
+    @staticmethod
+    def preprocess_cloud_role_records(records: List[Dict[str, Any]]) -> pd.DataFrame:
+        """Preprocess roles: role_name + is_active + permissions"""
+        if not records:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(records)
+        df['combined_text'] = (
+            'Role: ' + df['role_name'].fillna('').astype(str) + ' ' +
+            'Active: ' + df['is_active'].fillna(False).astype(str) + ' ' +
+            'Created: ' + df['created_at'].fillna('').astype(str)
+        )
+        df['combined_text'] = df['combined_text'].str.strip()
+        df = df[df['combined_text'] != '']
+        logger.info(f"Preprocessed {len(df)} roles")
+        return df
+    
     @staticmethod
     def preprocess_product_data_from_csv(df: pd.DataFrame) -> pd.DataFrame:
         """

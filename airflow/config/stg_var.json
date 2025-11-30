@@ -1,0 +1,32 @@
+{
+  "description": "Cloud PostgreSQL (Staging) configuration for Airflow DAGs",
+  "environment": "staging",
+  "postgres": {
+    "conn_id": "postgres_cloud_ecommerce",
+    "host": "34.177.103.63",
+    "port": 5432,
+    "database": "postgres"
+  },
+  "embedding": {
+    "batch_size": 50000,
+    "rate_limit_seconds": 1,
+    "vector_dimensions": 768,
+    "model": "models/embedding-001"
+  },
+  "schedules": {
+    "product_embedding": "0 4 * * *",
+    "category_embedding": "0 5 * * *",
+    "product_review_embedding": "0 4 * * *",
+    "user_embedding": "0 5 * * *",
+    "order_embedding": "0 4 * * *",
+    "order_item_embedding": "0 5 * * *",
+    "cart_embedding": "0 6 * * *",
+    "cart_item_embedding": "0 7 * * *",
+    "payment_embedding": "0 6 * * *",
+    "shipment_embedding": "0 6 * * *",
+    "inventory_embedding": "0 6 * * *",
+    "coupon_embedding": "0 7 * * *",
+    "event_embedding": "0 4 * * *",
+    "role_embedding": "0 7 * * *"
+  }
+}
