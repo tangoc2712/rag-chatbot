@@ -16,7 +16,7 @@ class ECommerceRAG:
         # Initialize Gemini
         if self.settings.GOOGLE_API_KEY:
             genai.configure(api_key=self.settings.GOOGLE_API_KEY)
-            self.llm = genai.GenerativeModel('gemini-2.5-flash-lite')
+            self.llm = genai.GenerativeModel('gemini-2.5-flash')
             logger.info("Google Gemini LLM initialized successfully")
         else:
             self.llm = None
@@ -90,33 +90,101 @@ class ECommerceRAG:
         
         response = "Found Products:\n"
         for product in products:
-            response += (f"- {product['product_title']}\n"
-                       f"  Rating: {float(product['rating']):.1f}\n"
-                       f"  Price: ${float(product['price']):.2f}\n"
-                       f"  Description: {product['description'][:200]}...\n\n")
+            # Handle both old schema (product_title) and new schema (name)
+            name = product.get('product_title') or product.get('name', 'Unknown')
+            rating = product.get('rating', 0)
+            price = product.get('price', 0)
+            description = product.get('description', '')
+            
+            response += f"- {name}\n"
+            if rating:
+                response += f"  Rating: {float(rating):.1f}\n"
+            response += f"  Price: ${float(price):.2f}\n"
+            if description:
+                response += f"  Description: {description[:200]}...\n\n"
+            else:
+                response += "\n"
+        return response
+    
+    def format_search_results(self, results: List[Dict[str, Any]]) -> str:
+        """Format multi-table search results"""
+        if not results:
+            return "No results found."
+        
+        response = "Found Results:\n\n"
+        for item in results:
+            source_table = item.get('_source_table', 'unknown')
+            response += f"[{source_table.upper()}]\n"
+            
+            if source_table == 'products':
+                response += f"- {item.get('name', 'Unknown')}\n"
+                if item.get('price'):
+                    response += f"  Price: ${float(item['price']):.2f}\n"
+                if item.get('description'):
+                    response += f"  {item['description'][:150]}...\n"
+            elif source_table == 'users':
+                response += f"- {item.get('full_name', 'Unknown')}\n"
+                response += f"  Email: {item.get('email', 'N/A')}\n"
+                if item.get('job'):
+                    response += f"  Job: {item['job']}\n"
+            elif source_table == 'orders':
+                response += f"- Order #{item.get('order_id', 'N/A')}\n"
+                response += f"  Date: {item.get('order_date', 'N/A')}\n"
+                response += f"  Status: {item.get('status', 'N/A')}\n"
+                if item.get('total_amount'):
+                    response += f"  Total: ${float(item['total_amount']):.2f}\n"
+            elif source_table == 'product_reviews':
+                response += f"- Rating: {item.get('rating', 'N/A')}/5\n"
+                response += f"  {item.get('review_text', '')[:150]}...\n"
+            elif source_table == 'coupons':
+                response += f"- Code: {item.get('coupon_code', 'N/A')}\n"
+                response += f"  Discount: {item.get('discount_value', 0)}\n"
+                response += f"  Min Purchase: ${item.get('min_purchase_amount', 0):.2f}\n"
+            elif source_table == 'shipments':
+                response += f"- Tracking: {item.get('tracking_number', 'N/A')}\n"
+                response += f"  Carrier: {item.get('carrier', 'N/A')}\n"
+                response += f"  Status: {item.get('status', 'N/A')}\n"
+            else:
+                # Generic formatting for other tables
+                for key, value in item.items():
+                    if key not in ['embedding', 'distance', '_source_table']:
+                        response += f"  {key}: {value}\n"
+            
+            response += "\n"
+        
         return response
 
-    def generate_llm_response(self, query: str, context: str) -> str:
+    def generate_llm_response(self, query: str, context: str, is_intro_query: bool = False) -> str:
         """Generate natural language response using Gemini"""
         if not self.llm:
             return context
         
-        prompt = f"""
-        You are a friendly E-commerce Shopping Assistant for an online retail platform. Your personality:
-        - Helpful, knowledgeable, and enthusiastic about products
-        - Professional yet conversational
-        - Focus on providing value to customers
+        # Special handling for introduction/greeting queries
+        intro_message = ""
+        if is_intro_query:
+            intro_message = """
+When users ask who you are or about yourself, introduce yourself as:
+"I'm an AI E-commerce Database Assistant with full admin access to your entire database. I can help you query any data, analyze business metrics, track orders and shipments, manage inventory, review customer behavior, and provide comprehensive insights across all tables in your e-commerce platform!"
+"""
         
-        When users ask who you are or about yourself, introduce yourself as:
-        "I'm your E-commerce Shopping Assistant, powered by advanced AI to help you find the perfect products and manage your orders. I can search through our product catalog, check order status, and provide personalized recommendations!"
+        prompt = f"""
+        You are an AI E-commerce Database Assistant with ADMIN-level access to the entire database. Your capabilities:
+        - Access to ALL customer data, orders, products, and transactions across the entire platform
+        - Analyze business metrics, sales trends, and customer behavior
+        - Query any table in the database without restrictions
+        - Provide insights on inventory, payments, shipments, and reviews
+        - Help with data analysis and reporting
+        
+        {intro_message}
         
         IMPORTANT FORMATTING RULES:
-        - Use **bold** for product names, prices, and important information
+        - Use **bold** for important metrics, names, IDs, and key information
         - Use bullet points with • or - for lists
-        - Use numbered lists (1., 2., 3.) for step-by-step instructions
-        - Use line breaks (two enters) to separate paragraphs for better readability
+        - Use numbered lists (1., 2., 3.) for rankings or step-by-step data
+        - Use line breaks (two enters) to separate sections for better readability
         - Format prices with $ symbol
         - Highlight ratings with ⭐ symbol when mentioning them
+        - Use tables format when showing multiple data entries
         - Make responses visually organized and easy to scan
         
         User Query: {query}
@@ -134,9 +202,12 @@ class ECommerceRAG:
             logger.error(f"Error generating LLM response: {str(e)}")
             return f"I found some information but couldn't generate a summary. Here is the raw data:\n\n{context}"
     
-    def semantic_search(self, query: str, min_rating: Optional[float] = None) -> List[Dict[str, Any]]:
+    def semantic_search(self, query: str, min_rating: Optional[float] = None, 
+                       table_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Perform semantic search with rating filter using pgvector
+        Perform semantic search across multiple tables using pgvector
+        Supports: products, users, orders, categories, carts, cart_items, coupons, 
+                 events, inventory, order_items, payments, product_reviews, roles, shipments
         """
         if not self.settings.GOOGLE_API_KEY:
             logger.warning("Cannot perform semantic search without GOOGLE_API_KEY")
@@ -152,24 +223,71 @@ class ECommerceRAG:
             query_embedding = result['embedding']
             
             conn = self.get_db_connection()
+            results = []
+            
+            # Determine which tables to search
+            tables_to_search = []
+            if table_name:
+                tables_to_search = [table_name]
+            else:
+                # Auto-detect relevant tables based on query keywords
+                query_lower = query.lower()
+                if any(word in query_lower for word in ['product', 'item', 'buy', 'purchase', 'price', 'rating']):
+                    tables_to_search.append('products')
+                if any(word in query_lower for word in ['user', 'customer', 'profile', 'account']):
+                    tables_to_search.append('users')
+                if any(word in query_lower for word in ['order', 'purchase history', 'bought']):
+                    tables_to_search.append('orders')
+                if any(word in query_lower for word in ['review', 'comment', 'feedback', 'rating']):
+                    tables_to_search.append('product_reviews')
+                if any(word in query_lower for word in ['cart', 'shopping cart']):
+                    tables_to_search.extend(['carts', 'cart_items'])
+                if any(word in query_lower for word in ['payment', 'transaction', 'paid']):
+                    tables_to_search.append('payments')
+                if any(word in query_lower for word in ['shipment', 'shipping', 'delivery', 'ship']):
+                    tables_to_search.append('shipments')
+                if any(word in query_lower for word in ['inventory', 'stock', 'available']):
+                    tables_to_search.append('inventory')
+                if any(word in query_lower for word in ['coupon', 'discount', 'promo']):
+                    tables_to_search.append('coupons')
+                if any(word in query_lower for word in ['event', 'activity']):
+                    tables_to_search.append('events')
+                if any(word in query_lower for word in ['category', 'categories']):
+                    tables_to_search.append('categories')
+                
+                # Default to products if no match
+                if not tables_to_search:
+                    tables_to_search = ['products']
+            
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Base query
-                sql = """
-                    SELECT *, embedding <=> %s::vector as distance 
-                    FROM products 
-                """
-                params = [query_embedding]
-                
-                # Add rating filter
-                if min_rating is not None:
-                    sql += " WHERE rating >= %s"
-                    params.append(min_rating)
-                
-                # Order by distance (similarity)
-                sql += " ORDER BY distance ASC LIMIT 5"
-                
-                cur.execute(sql, params)
-                return cur.fetchall()
+                for table in tables_to_search:
+                    try:
+                        # Build table-specific query
+                        sql = f"""
+                            SELECT '{table}' as _source_table, *, 
+                                   embedding <=> %s::vector as distance 
+                            FROM {table}
+                            WHERE embedding IS NOT NULL
+                        """
+                        params = [query_embedding]
+                        
+                        # Add rating filter for products
+                        if table == 'products' and min_rating is not None:
+                            sql += " AND rating >= %s"
+                            params.append(min_rating)
+                        
+                        sql += " ORDER BY distance ASC LIMIT 3"
+                        
+                        cur.execute(sql, params)
+                        table_results = cur.fetchall()
+                        results.extend(table_results)
+                    except Exception as e:
+                        logger.warning(f"Error searching table {table}: {e}")
+                        continue
+            
+            # Sort all results by distance and limit
+            results.sort(key=lambda x: x.get('distance', 999))
+            return results[:5]
                 
         except Exception as e:
             logger.error(f"Error in semantic search: {e}")
@@ -179,19 +297,25 @@ class ECommerceRAG:
                 conn.close()
 
     def classify_intent(self, query: str) -> str:
-        """Classify user query intent"""
+        """Classify user query intent for admin database queries"""
         if not self.llm:
             return "SEMANTIC_SEARCH"
             
         prompt = f"""
-        Classify the following user query into one of these categories:
-        1. SQL_QUERY: Questions about specific data, statistics, aggregations, orders, or filtering products by strict criteria (price, rating, category).
-        2. SEMANTIC_SEARCH: Vague or descriptive product searches, looking for recommendations based on features or description.
-        3. GENERAL_CHAT: Greetings, pleasantries, or questions unrelated to the e-commerce data.
+        You are classifying admin database queries. Classify the following query into one of these categories:
+        
+        1. SQL_QUERY: Analytical questions, data queries, statistics, aggregations, counting, filtering, or any question that requires querying structured database tables (users, orders, products, payments, shipments, inventory, reviews, etc.)
+           Examples: "How many customers?", "Show top products", "Total revenue", "List pending orders", "Who are the users?", "Customer demographics"
+        
+        2. SEMANTIC_SEARCH: Product searches based on descriptions, features, or semantic similarity
+           Examples: "Find a blue dress", "Show me laptops for gaming", "Products similar to..."
+        
+        3. GENERAL_CHAT: Greetings, small talk, questions about the assistant itself
+           Examples: "Hello", "Who are you?", "What can you do?"
         
         Query: {query}
         
-        Return ONLY the category name.
+        Return ONLY the category name (SQL_QUERY, SEMANTIC_SEARCH, or GENERAL_CHAT).
         """
         try:
             response = self.llm.generate_content(prompt)
@@ -204,41 +328,155 @@ class ECommerceRAG:
         """Generate SQL query from natural language"""
         schema = """
         Table: products
-        - product_id (TEXT)
-        - product_title (TEXT)
+        - product_id (INTEGER, PK)
+        - name (TEXT)
         - description (TEXT)
-        - category (TEXT)
-        - price (FLOAT)
-        - rating (FLOAT)
-        - rating_count (INTEGER)
-        - store (TEXT)
+        - price (NUMERIC)
+        - category_id (INTEGER, FK)
+        - sku (TEXT)
+        - product_url (TEXT)
+        - currency (TEXT)
+        - is_active (BOOLEAN)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: categories
+        - category_id (INTEGER, PK)
+        - category_name (TEXT)
+        - parent_category_id (INTEGER, FK, nullable)
+        - description (TEXT)
+        - is_active (BOOLEAN)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: users
+        - user_id (UUID, PK) - DO NOT USE FOR JOINS WITH ORDERS
+        - email (TEXT, UNIQUE) - USE THIS TO JOIN WITH orders.user_id
+        - full_name (TEXT)
+        - phone (TEXT)
+        - address (TEXT)
+        - date_of_birth (DATE)
+        - job (TEXT)
+        - gender (TEXT)
+        - role_id (INTEGER, FK)
+        - is_active (BOOLEAN)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: roles
+        - role_id (INTEGER, PK)
+        - role_name (TEXT)
+        - description (TEXT)
+        - created_at, updated_at (TIMESTAMP)
         
         Table: orders
-        - order_id (TEXT)
-        - order_datetime (TIMESTAMP)
-        - customer_id (TEXT)
-        - product (TEXT)
-        - sales (FLOAT)
+        - order_id (UUID, PK)
+        - user_id (TEXT) - CRITICAL: Contains EMAIL addresses! Join: users.email = orders.user_id
+        - status (TEXT)
+        - order_total (NUMERIC)
+        - currency (TEXT)
+        - created_at, updated_at (TIMESTAMP)
+        - subtotal, tax, discount, shipping_charges (NUMERIC)
+        
+        Table: order_items
+        - order_item_id (INTEGER, PK)
+        - order_id (INTEGER, FK)
+        - product_id (INTEGER, FK)
         - quantity (INTEGER)
-        - total_amount (FLOAT)
-        - profit (FLOAT)
-        - shipping_cost (FLOAT)
-        - order_priority (TEXT)
+        - price (NUMERIC)
+        - subtotal (NUMERIC)
+        - created_at (TIMESTAMP)
+        
+        Table: carts
+        - cart_id (INTEGER, PK)
+        - user_id (INTEGER, FK)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: cart_items
+        - cart_item_id (INTEGER, PK)
+        - cart_id (INTEGER, FK)
+        - product_id (INTEGER, FK)
+        - quantity (INTEGER)
+        - price (NUMERIC)
+        - added_at (TIMESTAMP)
+        
+        Table: payments
+        - payment_id (INTEGER, PK)
+        - order_id (INTEGER, FK)
+        - payment_method (TEXT)
+        - payment_status (TEXT)
+        - amount (NUMERIC)
+        - transaction_id (TEXT)
+        - payment_date (TIMESTAMP)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: shipments
+        - shipment_id (INTEGER, PK)
+        - order_id (INTEGER, FK)
+        - shipment_date (TIMESTAMP)
+        - delivery_date (TIMESTAMP)
+        - tracking_number (TEXT)
+        - carrier (TEXT)
+        - status (TEXT)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: inventory
+        - inventory_id (INTEGER, PK)
+        - product_id (INTEGER, FK)
+        - quantity_available (INTEGER)
+        - quantity_reserved (INTEGER)
+        - warehouse_location (TEXT)
+        - last_restocked_at (TIMESTAMP)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: product_reviews
+        - review_id (INTEGER, PK)
+        - product_id (INTEGER, FK)
+        - user_id (INTEGER, FK)
+        - rating (INTEGER, 1-5)
+        - review_text (TEXT)
+        - review_date (TIMESTAMP)
+        - is_verified_purchase (BOOLEAN)
+        - helpful_count (INTEGER)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: coupons
+        - coupon_id (INTEGER, PK)
+        - coupon_code (TEXT)
+        - discount_type (TEXT)
+        - discount_value (NUMERIC)
+        - min_purchase_amount (NUMERIC)
+        - max_discount_amount (NUMERIC)
+        - start_date, end_date (TIMESTAMP)
+        - is_active (BOOLEAN)
+        - usage_limit (INTEGER)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: events
+        - event_id (INTEGER, PK)
+        - event_type (TEXT)
+        - user_id (INTEGER, FK, nullable)
+        - product_id (INTEGER, FK, nullable)
+        - event_data (JSONB)
+        - event_timestamp (TIMESTAMP)
+        - created_at (TIMESTAMP)
         """
         
         prompt = f"""
-        You are a PostgreSQL expert. Generate a valid SQL query to answer the user's question based on the schema below.
+        You are a PostgreSQL expert with ADMIN access. Generate a valid SQL query to answer the user's question based on the schema below.
         
         Schema:
         {schema}
         
-        Context:
-        - Current Customer ID: {customer_id if customer_id else 'Not set'}
-        - If the user asks about "my orders" or "latest order", use the customer_id.
-        - If customer_id is not set and the query requires it, return "NEED_CUSTOMER_ID".
-        - Use ILIKE for text comparisons.
-        - Limit results to 5 unless specified otherwise.
-        - Return ONLY the SQL query, no markdown, no explanation.
+        Instructions:
+        - You have full access to ALL data in the database (no customer_id restrictions)
+        - Use appropriate JOINs to combine data from multiple tables when needed
+        - CRITICAL: When joining users and orders tables, ALWAYS use: users.email = orders.user_id
+          (orders.user_id contains EMAIL addresses, NOT UUID!)
+        - Example correct join: SELECT u.full_name, COUNT(o.order_id) FROM users u JOIN orders o ON u.email = o.user_id
+        - Use LIKE or ILIKE for text comparisons (case-insensitive)
+        - For aggregations, use GROUP BY, COUNT, SUM, AVG as appropriate
+        - Limit results to 10 unless specified otherwise
+        - Order results by most relevant columns (e.g., created_at DESC, rating DESC)
+        - Return ONLY the SQL query, no markdown, no explanation
+        - Make sure column names and table names match the schema exactly
         
         User Question: {query}
         """
@@ -246,6 +484,37 @@ class ECommerceRAG:
         try:
             response = self.llm.generate_content(prompt)
             sql = response.text.strip().replace('```sql', '').replace('```', '').strip()
+            
+            # CRITICAL FIX: Automatically fix wrong joins between users and orders
+            # Replace any variations of wrong joins with the correct one
+            import re
+            
+            # Pattern 1: users.user_id = orders.user_id or similar
+            sql = re.sub(
+                r'users?\.user_id\s*=\s*orders?\.user_id',
+                'users.email = orders.user_id',
+                sql,
+                flags=re.IGNORECASE
+            )
+            
+            # Pattern 2: u.user_id = o.user_id (with aliases)
+            sql = re.sub(
+                r'\bu\.user_id\s*=\s*o\.user_id\b',
+                'u.email = o.user_id',
+                sql,
+                flags=re.IGNORECASE
+            )
+            
+            # Pattern 3: ON user_id (without table prefix)
+            if 'JOIN orders' in sql and 'user_id' in sql:
+                sql = re.sub(
+                    r'ON\s+user_id',
+                    'ON users.email = orders.user_id',
+                    sql,
+                    flags=re.IGNORECASE
+                )
+            
+            logger.info(f"Generated and fixed SQL: {sql}")
             return sql
         except Exception as e:
             logger.error(f"Error generating SQL: {e}")
@@ -253,12 +522,12 @@ class ECommerceRAG:
 
     def execute_sql(self, sql: str) -> Any:
         """Execute SQL query safely"""
-        if not sql or "NEED_CUSTOMER_ID" in sql:
-            return "Please provide your Customer ID first (e.g., 'set customer 12345')."
+        if not sql:
+            return "Unable to generate SQL query for your request."
             
-        # Basic safety check
-        if not sql.upper().startswith("SELECT"):
-            return "Sorry, I can only perform read operations."
+        # Basic safety check - only allow SELECT queries
+        if not sql.upper().strip().startswith("SELECT"):
+            return "Sorry, I can only perform read operations (SELECT queries)."
             
         conn = self.get_db_connection()
         try:
@@ -271,37 +540,150 @@ class ECommerceRAG:
         finally:
             conn.close()
 
-    def process_query(self, query: str, customer_id: Optional[int] = None) -> str:
-        """Process user query with intelligent routing"""
-        intent = self.classify_intent(query)
-        logger.info(f"Query Intent: {intent}")
+    def process_query(self, query: str, customer_id: Optional[int] = None, return_debug: bool = False) -> Any:
+        """Process user query - use SQL for analytical queries, direct fetch for simple queries
         
-        context = ""
+        Args:
+            query: User's question
+            customer_id: Optional customer ID (not used in admin mode)
+            return_debug: If True, return tuple of (response, debug_info)
         
-        if intent == "GENERAL_CHAT":
-            return self.generate_llm_response(query, "User is engaging in general conversation.")
-            
-        elif intent == "SQL_QUERY":
-            sql = self.generate_sql_query(query, customer_id)
-            if sql == "NEED_CUSTOMER_ID":
-                return "Could you please provide your Customer ID first? (Type 'set customer <id>')"
-            
-            logger.info(f"Generated SQL: {sql}")
-            results = self.execute_sql(sql)
-            context = f"SQL Query Results: {results}"
-            
-        else: # SEMANTIC_SEARCH
-            # Extract rating requirement if present (legacy logic kept for hybrid approach)
-            min_rating = None
-            if 'above' in query and any(char.isdigit() for char in query):
-                try:
-                    rating_idx = query.find('above') + 5
-                    rating_str = ''.join(c for c in query[rating_idx:] if c.isdigit() or c == '.')
-                    min_rating = float(rating_str)
-                except ValueError:
-                    pass
-            
-            products = self.semantic_search(query, min_rating=min_rating)
-            context = self.format_product_results(products)
-            
-        return self.generate_llm_response(query, context)
+        Returns:
+            str or tuple: Response text, or (response, debug_info) if return_debug=True
+        """
+        
+        query_lower = query.lower()
+        
+        # Check if this is an introduction/greeting query
+        is_intro_query = any(word in query_lower for word in ['who are you', 'what are you', 'what can you do', 'introduce yourself', 'your capabilities'])
+        
+        # Check if this is an analytical query that needs SQL
+        is_analytical = any(word in query_lower for word in [
+            'most', 'top', 'best', 'highest', 'lowest', 'total', 'sum', 'average', 
+            'count', 'how many', 'who bought', 'who purchased', 'which customer',
+            'revenue', 'sales', 'statistics', 'analyze', 'compare', 'trend'
+        ])
+        
+        context_parts = []
+        debug_info = {
+            'query_type': 'analytical' if is_analytical else 'simple',
+            'is_intro': is_intro_query,
+            'sql_query': None,
+            'sql_results': None
+        }
+        
+        # For analytical queries, use SQL generation
+        if is_analytical and not is_intro_query:
+            try:
+                # Generate SQL query
+                sql = self.generate_sql_query(query, customer_id)
+                logger.info(f"Generated SQL for analytical query: {sql}")
+                debug_info['sql_query'] = sql
+                
+                # Execute SQL
+                results = self.execute_sql(sql)
+                debug_info['sql_results'] = str(results)[:500]  # Limit size
+                
+                if isinstance(results, str):
+                    # Error message from execute_sql
+                    context_parts.append(results)
+                else:
+                    context_parts.append(f"Query Results:\n{results}")
+                    context_parts.append(f"SQL Query Used: {sql}")
+                    
+            except Exception as e:
+                logger.error(f"Error in analytical query processing: {e}")
+                context_parts.append(f"Error processing analytical query: {e}")
+                debug_info['error'] = str(e)
+        else:
+            # For simple queries, fetch relevant data directly
+            try:
+                conn = self.get_db_connection()
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    
+                    # Check for customer/user queries
+                    if any(word in query_lower for word in ['customer', 'user', 'profile', 'account']):
+                        cur.execute("SELECT * FROM users ORDER BY created_at DESC LIMIT 10")
+                        users = cur.fetchall()
+                        context_parts.append(f"Users Data: {users}")
+                        
+                        cur.execute("SELECT COUNT(*) as total FROM users")
+                        count = cur.fetchone()
+                        context_parts.append(f"Total Users: {count['total']}")
+                    
+                    # Check for product queries
+                    if any(word in query_lower for word in ['product', 'item', 'inventory', 'stock']):
+                        cur.execute("SELECT * FROM products ORDER BY created_at DESC LIMIT 10")
+                        products = cur.fetchall()
+                        context_parts.append(f"Products Data: {products}")
+                        
+                        cur.execute("SELECT COUNT(*) as total FROM products")
+                        count = cur.fetchone()
+                        context_parts.append(f"Total Products: {count['total']}")
+                    
+                    # Check for order queries
+                    if any(word in query_lower for word in ['order', 'purchase', 'transaction']):
+                        cur.execute("SELECT * FROM orders ORDER BY order_date DESC LIMIT 10")
+                        orders = cur.fetchall()
+                        context_parts.append(f"Orders Data: {orders}")
+                        
+                        cur.execute("SELECT COUNT(*) as total FROM orders")
+                        count = cur.fetchone()
+                        context_parts.append(f"Total Orders: {count['total']}")
+                    
+                    # Check for payment queries
+                    if any(word in query_lower for word in ['payment', 'revenue', 'sales']):
+                        cur.execute("SELECT * FROM payments ORDER BY payment_date DESC LIMIT 10")
+                        payments = cur.fetchall()
+                        context_parts.append(f"Payments Data: {payments}")
+                    
+                    # Check for shipment queries
+                    if any(word in query_lower for word in ['shipment', 'shipping', 'delivery']):
+                        cur.execute("SELECT * FROM shipments ORDER BY shipment_date DESC LIMIT 10")
+                        shipments = cur.fetchall()
+                        context_parts.append(f"Shipments Data: {shipments}")
+                    
+                    # Check for review queries
+                    if any(word in query_lower for word in ['review', 'rating', 'feedback']):
+                        cur.execute("SELECT * FROM product_reviews ORDER BY review_date DESC LIMIT 10")
+                        reviews = cur.fetchall()
+                        context_parts.append(f"Reviews Data: {reviews}")
+                    
+                    # Check for category queries
+                    if any(word in query_lower for word in ['category', 'categories']):
+                        cur.execute("SELECT * FROM categories LIMIT 10")
+                        categories = cur.fetchall()
+                        context_parts.append(f"Categories Data: {categories}")
+                    
+                    # Check for coupon queries
+                    if any(word in query_lower for word in ['coupon', 'discount', 'promo']):
+                        cur.execute("SELECT * FROM coupons WHERE is_active = true LIMIT 10")
+                        coupons = cur.fetchall()
+                        context_parts.append(f"Coupons Data: {coupons}")
+                    
+                    # If no specific context matched, fetch general statistics
+                    if not context_parts and not is_intro_query:
+                        cur.execute("""
+                            SELECT 
+                                (SELECT COUNT(*) FROM users) as total_users,
+                                (SELECT COUNT(*) FROM products) as total_products,
+                                (SELECT COUNT(*) FROM orders) as total_orders
+                        """)
+                        stats = cur.fetchone()
+                        context_parts.append(f"Database Statistics: {stats}")
+                
+                conn.close()
+            except Exception as e:
+                logger.error(f"Error fetching database context: {e}")
+                context_parts.append(f"Database query error: {e}")
+                debug_info['error'] = str(e)
+        
+        # Combine all context
+        context = "\n\n".join(context_parts) if context_parts else "No specific data retrieved."
+        
+        # Generate response with LLM
+        response = self.generate_llm_response(query, context, is_intro_query=is_intro_query)
+        
+        if return_debug:
+            return response, debug_info
+        return response

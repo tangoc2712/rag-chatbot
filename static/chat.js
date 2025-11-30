@@ -3,12 +3,10 @@ const API_BASE_URL = 'http://localhost:8000';
 
 // State
 let sessionId = localStorage.getItem('sessionId') || generateSessionId();
-let customerId = localStorage.getItem('customerId') || null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('sessionId', sessionId);
-    updateCustomerStatus();
     loadChatHistory();
     
     // Event listeners
@@ -27,17 +25,6 @@ function generateSessionId() {
     return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
-function updateCustomerStatus() {
-    const statusElement = document.getElementById('customer-status');
-    if (customerId) {
-        statusElement.textContent = `Customer ID: ${customerId}`;
-        statusElement.style.background = 'rgba(76, 175, 80, 0.3)';
-    } else {
-        statusElement.textContent = 'Customer ID: Not Set';
-        statusElement.style.background = 'rgba(255, 255, 255, 0.2)';
-    }
-}
-
 async function handleSubmit(e) {
     e.preventDefault();
     
@@ -52,16 +39,6 @@ async function handleSubmit(e) {
     // Add user message to chat
     addMessage(message, 'user');
     
-    // Check if setting customer ID
-    if (message.toLowerCase().startsWith('set customer')) {
-        const parts = message.split(' ');
-        if (parts.length >= 3) {
-            customerId = parts[2];
-            localStorage.setItem('customerId', customerId);
-            updateCustomerStatus();
-        }
-    }
-    
     // Show typing indicator
     showTypingIndicator();
     
@@ -74,8 +51,7 @@ async function handleSubmit(e) {
             },
             body: JSON.stringify({
                 message: message,
-                session_id: sessionId,
-                customer_id: customerId
+                session_id: sessionId
             })
         });
         
@@ -84,6 +60,23 @@ async function handleSubmit(e) {
         }
         
         const data = await response.json();
+        
+        // Log debug info to console
+        if (data.debug_info) {
+            console.group('🔍 Query Debug Info');
+            console.log('Query:', message);
+            console.log('Query Type:', data.debug_info.query_type);
+            if (data.debug_info.sql_query) {
+                console.log('Generated SQL:', data.debug_info.sql_query);
+            }
+            if (data.debug_info.sql_results) {
+                console.log('SQL Results:', data.debug_info.sql_results);
+            }
+            if (data.debug_info.error) {
+                console.error('Error:', data.debug_info.error);
+            }
+            console.groupEnd();
+        }
         
         // Hide typing indicator
         hideTypingIndicator();
@@ -223,9 +216,13 @@ async function clearChat() {
     
     try {
         // Delete from server
-        await fetch(`${API_BASE_URL}/chat/history/${sessionId}`, {
+        const response = await fetch(`${API_BASE_URL}/chat/history/${sessionId}`, {
             method: 'DELETE'
         });
+        
+        if (!response.ok) {
+            console.warn('Failed to delete from server, continuing with local clear');
+        }
         
         // Generate new session
         sessionId = generateSessionId();
@@ -235,8 +232,17 @@ async function clearChat() {
         const messagesContainer = document.getElementById('chat-messages');
         messagesContainer.innerHTML = `
             <div class="welcome-message">
-                <h2>Hi Ngoc</h2>
-                <p>How can I help you today?</p>
+                <h2>👋 Welcome, Admin</h2>
+                <p>I have full access to your database. Ask me anything about your e-commerce data!</p>
+                <div class="example-queries">
+                    <p><strong>Try asking:</strong></p>
+                    <ul>
+                        <li>"Show me the top 5 selling products"</li>
+                        <li>"How many pending orders do we have?"</li>
+                        <li>"List recent customer reviews"</li>
+                        <li>"What's our total revenue this month?"</li>
+                    </ul>
+                </div>
             </div>
         `;
         

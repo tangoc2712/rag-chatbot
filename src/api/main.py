@@ -2,7 +2,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from .endpoints import orders, products, chat
+from .endpoints import (
+    orders, products, chat, users, categories, 
+    reviews, inventory, coupons, shipments, payments
+)
 from ..config import Settings
 
 # Initialize FastAPI app
@@ -30,6 +33,13 @@ if static_path.exists():
 app.include_router(orders.router, prefix="/orders", tags=["orders"])
 app.include_router(products.router, prefix="/products", tags=["products"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(users.router, prefix="/users", tags=["users"])
+app.include_router(categories.router, prefix="/categories", tags=["categories"])
+app.include_router(reviews.router, prefix="/reviews", tags=["reviews"])
+app.include_router(inventory.router, prefix="/inventory", tags=["inventory"])
+app.include_router(coupons.router, prefix="/coupons", tags=["coupons"])
+app.include_router(shipments.router, prefix="/shipments", tags=["shipments"])
+app.include_router(payments.router, prefix="/payments", tags=["payments"])
 
 # Health check endpoint
 @app.get("/health")

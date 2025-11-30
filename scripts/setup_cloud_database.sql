@@ -11,7 +11,31 @@ CREATE EXTENSION IF NOT EXISTS vector;
 SELECT * FROM pg_extension WHERE extname = 'vector';
 
 -- =====================================================
--- Step 2: Add Embedding Columns to All Tables
+-- Step 2: Create Chat History Table
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS chat_history (
+    id SERIAL PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    customer_id TEXT,
+    user_message TEXT NOT NULL,
+    bot_response TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB
+);
+
+-- Create indexes for faster queries
+CREATE INDEX IF NOT EXISTS idx_chat_history_session_id 
+ON chat_history(session_id);
+
+CREATE INDEX IF NOT EXISTS idx_chat_history_customer_id 
+ON chat_history(customer_id);
+
+CREATE INDEX IF NOT EXISTS idx_chat_history_timestamp 
+ON chat_history(timestamp);
+
+-- =====================================================
+-- Step 3: Add Embedding Columns to All Tables
 -- =====================================================
 
 -- Products table

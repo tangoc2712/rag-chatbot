@@ -1,6 +1,31 @@
-# E-commerce RAG Chatbot
+# E-commerce RAG Chatbot - Admin Mode
 
-A chatbot leveraging **RAG (Retrieval-Augmented Generation)** with PostgreSQL + pgvector for semantic search and Google Gemini for embeddings/LLM.
+An AI-powered database assistant with **ADMIN-level access** leveraging **RAG (Retrieval-Augmented Generation)** with PostgreSQL + pgvector for semantic search and Google Gemini for embeddings/LLM.
+
+## Key Features
+
+- 🔑 **Full Admin Access** - Query any data across all tables without restrictions
+- 🧠 **Intelligent Query Routing** - Automatically detects intent and routes to SQL or semantic search
+- 📊 **Multi-Table Support** - Access to 14+ tables including products, orders, users, payments, shipments, reviews, and more
+- 💬 **Natural Language Interface** - Ask questions in plain English
+- ⚡ **Real-time Analysis** - Get instant insights on sales, inventory, customer behavior, and more
+
+## Supported Tables
+
+The chatbot has full access to:
+- **Products** - Product catalog with descriptions, prices, ratings
+- **Users** - Customer profiles and information
+- **Orders** - Order history and status
+- **Order Items** - Detailed order line items
+- **Payments** - Payment transactions and status
+- **Shipments** - Shipping tracking and delivery status
+- **Inventory** - Stock levels and warehouse locations
+- **Product Reviews** - Customer ratings and feedback
+- **Carts & Cart Items** - Shopping cart data
+- **Coupons** - Discount codes and promotions
+- **Categories** - Product categorization
+- **Roles** - User role management
+- **Events** - User activity tracking
 
 ## Tech Stack
 
@@ -96,11 +121,68 @@ python scripts/run.py api
 
 ## API Endpoints
 
+### Chat
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/chat/message` | Send message to chatbot |
-| GET | `/products/search` | Search products |
-| GET | `/orders/customer/{id}` | Get customer orders |
+| POST | `/chat/message` | Send message to chatbot (admin access) |
+| GET | `/chat/history/{session_id}` | Get chat history |
+
+### Products
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/products/search` | Search products semantically |
+| GET | `/products/{product_id}` | Get product details |
+| GET | `/products/` | List all products |
+
+### Users
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/users/{user_id}` | Get user details |
+| GET | `/users/` | List all users |
+| GET | `/users/search` | Search users |
+
+### Orders
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/orders/{order_id}` | Get order details |
+| GET | `/orders/` | List all orders |
+| GET | `/orders/user/{user_id}` | Get user's orders |
+
+### Other Endpoints
+- `/categories/*` - Category management
+- `/reviews/*` - Product reviews
+- `/inventory/*` - Stock management
+- `/payments/*` - Payment tracking
+- `/shipments/*` - Shipment tracking
+- `/coupons/*` - Coupon management
+
+## Example Queries
+
+The admin chatbot can answer questions like:
+
+**Sales & Revenue:**
+- "What's our total revenue this month?"
+- "Show me the top 10 selling products"
+- "How many orders are pending?"
+
+**Inventory:**
+- "What products are low in stock?"
+- "Show me products with 0 inventory"
+
+**Customer Insights:**
+- "How many new users registered this week?"
+- "Who are our top customers by order value?"
+- "Show me users with the most orders"
+
+**Product Analysis:**
+- "What are the highest rated products?"
+- "Find products with negative reviews"
+- "Show me products in the electronics category"
+
+**Operations:**
+- "List pending shipments"
+- "Show payment failures today"
+- "What coupons are currently active?"
 
 ## Using Airflow (Optional)
 

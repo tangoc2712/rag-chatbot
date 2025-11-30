@@ -20,6 +20,7 @@ class ChatResponse(BaseModel):
     response: str
     session_id: str
     timestamp: str
+    debug_info: Optional[Dict[str, Any]] = None  # Add debug info
 
 class ChatHistoryResponse(BaseModel):
     history: List[Dict[str, Any]]
@@ -60,23 +61,12 @@ async def send_message(request: ChatRequest):
         # Generate or use existing session ID
         session_id = request.session_id or str(uuid.uuid4())
         
-        # Extract customer ID from message if setting customer
-        customer_id = request.customer_id
+        # Process query through RAG assistant with admin access
         user_message = request.message.strip()
+        customer_id = request.customer_id
         
-        # Handle set customer command
-        if user_message.lower().startswith('set customer'):
-            try:
-                customer_id = user_message.split()[-1]
-                bot_response = f"Customer ID set to: {customer_id}"
-            except (ValueError, IndexError):
-                bot_response = "Invalid customer ID. Please use format: 'set customer <id>'"
-        else:
-            # Process query through RAG assistant
-            bot_response = rag_assistant.process_query(
-                user_message, 
-                int(customer_id) if customer_id and customer_id.isdigit() else None
-            )
+        # Process all queries through RAG assistant and get debug info
+        bot_response, debug_info = rag_assistant.process_query(user_message, return_debug=True)
         
         # Save to database
         save_chat_to_db(
@@ -84,11 +74,15 @@ async def send_message(request: ChatRequest):
             customer_id=customer_id,
             user_message=request.message,
             bot_response=bot_response,
-            metadata={"source": "web_chat"}
+            metadata={"source": "web_chat", "debug": debug_info}
         )
         
         return ChatResponse(
             response=bot_response,
+            session_id=session_id,
+            timestamp=datetime.now().isoformat(),
+            debug_info=debug_info
+        )
             session_id=session_id,
             timestamp=datetime.now().isoformat()
         )

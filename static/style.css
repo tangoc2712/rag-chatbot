@@ -109,6 +109,44 @@ body {
     font-size: 18px;
 }
 
+.example-queries {
+    margin-top: 30px;
+    padding: 20px;
+    background: var(--chat-bg);
+    border-radius: 8px;
+    text-align: left;
+    border: 1px solid var(--border-color);
+}
+
+.example-queries p {
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.example-queries ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.example-queries li {
+    padding: 8px 12px;
+    margin: 6px 0;
+    background: var(--input-bg);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.example-queries li:hover {
+    background: var(--bg-color);
+    color: var(--text-primary);
+}
+
+
 /* Message Styling */
 .message {
     width: 100%;
