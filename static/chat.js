@@ -19,6 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         console.error('Clear button not found!');
     }
+    
+    // Add click handlers to example queries
+    attachExampleQueryHandlers();
 });
 
 function generateSessionId() {
@@ -209,6 +212,22 @@ function addMessageWithTime(text, sender, timestamp) {
     messagesContainer.appendChild(messageDiv);
 }
 
+function attachExampleQueryHandlers() {
+    // Attach click handlers to example query items
+    const exampleQueries = document.querySelectorAll('.example-queries li');
+    exampleQueries.forEach(item => {
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', () => {
+            const query = item.textContent.replace(/^["']|["']$/g, ''); // Remove quotes
+            const input = document.getElementById('message-input');
+            input.value = query;
+            input.focus();
+            // Optionally auto-submit
+            // document.getElementById('chat-form').dispatchEvent(new Event('submit'));
+        });
+    });
+}
+
 async function clearChat() {
     if (!confirm('Are you sure you want to clear the chat history?')) {
         return;
@@ -245,6 +264,9 @@ async function clearChat() {
                 </div>
             </div>
         `;
+        
+        // Re-attach handlers after clearing
+        attachExampleQueryHandlers();
         
     } catch (error) {
         console.error('Error clearing chat:', error);

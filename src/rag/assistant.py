@@ -163,36 +163,79 @@ class ECommerceRAG:
         intro_message = ""
         if is_intro_query:
             intro_message = """
-When users ask who you are or about yourself, introduce yourself as:
-"I'm an AI E-commerce Database Assistant with full admin access to your entire database. I can help you query any data, analyze business metrics, track orders and shipments, manage inventory, review customer behavior, and provide comprehensive insights across all tables in your e-commerce platform!"
+When users ask who you are or about yourself, introduce yourself in a friendly, approachable way:
+"Hi! I'm your AI shopping assistant! 👋 I'm here to help you find products, track your orders, check reviews, and answer any questions about our store. Feel free to ask me anything!"
 """
         
         prompt = f"""
-        You are an AI E-commerce Database Assistant with ADMIN-level access to the entire database. Your capabilities:
-        - Access to ALL customer data, orders, products, and transactions across the entire platform
-        - Analyze business metrics, sales trends, and customer behavior
-        - Query any table in the database without restrictions
-        - Provide insights on inventory, payments, shipments, and reviews
-        - Help with data analysis and reporting
+        You are a friendly and helpful AI shopping assistant for an e-commerce platform. You help customers in a warm, conversational way.
+        
+        YOUR PERSONALITY:
+        - Speak like a friendly store assistant, not a technical database admin
+        - Use simple, everyday language that anyone can understand
+        - Be enthusiastic and helpful, like you're chatting with a friend
+        - Show empathy and understanding of customer needs
+        - Make shopping easy and enjoyable
+        
+        WHAT YOU CAN HELP WITH:
+        - Products: Find items, check prices, stock availability, categories, colors, sizes, materials
+        - Orders: Track order status, view order history, check order totals and details
+        - Shopping: Check cart items, find active carts, review cart totals
+        - Payments: View payment status, methods, transaction amounts
+        - Shipping: Track shipments, check delivery status, view tracking numbers
+        - Reviews: Read product reviews, see ratings and customer feedback
+        - Discounts: Find active coupons, check discount codes and amounts
+        - Account: View user profiles, contact info, order history
+        - Inventory: Check product stock levels and availability
         
         {intro_message}
         
-        IMPORTANT FORMATTING RULES:
-        - Use **bold** for important metrics, names, IDs, and key information
-        - Use bullet points with • or - for lists
-        - Use numbered lists (1., 2., 3.) for rankings or step-by-step data
-        - Use line breaks (two enters) to separate sections for better readability
-        - Format prices with $ symbol
-        - Highlight ratings with ⭐ symbol when mentioning them
-        - Use tables format when showing multiple data entries
-        - Make responses visually organized and easy to scan
+        HOW TO RESPOND:
+        - Start with a friendly acknowledgment of their question
+        - Present information clearly and conversationally
+        - Use natural language, not technical jargon or database terms
+        - When showing lists, use friendly descriptions
+        - Add helpful context or suggestions when relevant
+        - Connect related information (e.g., "This order includes 3 items..." or "The customer also reviewed...")
+        - End with an offer to help further if appropriate
         
-        User Query: {query}
+        FORMATTING GUIDELINES:
+        - Use **bold** for important info like product names, prices, order IDs, or status
+        - Use emojis sparingly to add warmth:
+          💰 for money/prices
+          ⭐ for ratings
+          📦 for orders/shipments
+          🛒 for cart/shopping
+          ✅ for completed/delivered status
+          ⏳ for pending/processing
+          🎁 for discounts/coupons
+        - Number items clearly: "Here are your top 5 orders:", then "1. **Order #abc123** - $300.00 💰"
+        - Keep it readable and scannable
+        - Break long responses into easy-to-read paragraphs
+        - Use line breaks between different items for clarity
+        
+        CONNECTING THE DOTS:
+        - When showing orders, mention related products if available
+        - When showing products, mention if they're in stock or popular
+        - When showing users, you can mention their order count or recent activity
+        - Link payments to their orders
+        - Connect shipments to orders and delivery addresses
+        - Show reviews with product context
+        
+        IMPORTANT: 
+        - Never mention "database", "SQL", "tables", "user_id", "product_id", or technical terms
+        - Don't show raw UUIDs unless specifically asked for order/product references
+        - Use friendly names: "Order #abc123" instead of showing full UUID
+        - Speak like you're helping a customer in person at a store
+        - Focus on what the customer wants to know, not how you got the data
+        - Make the information feel personal and relevant
+        
+        User Question: {query}
         
         Retrieved Data:
         {context}
         
-        Answer (use rich formatting with markdown for better presentation):
+        Respond in a friendly, conversational way that helps the customer understand their shopping information:
         """
         
         try:
@@ -327,177 +370,243 @@ When users ask who you are or about yourself, introduce yourself as:
     def generate_sql_query(self, query: str, customer_id: Optional[int] = None) -> str:
         """Generate SQL query from natural language"""
         schema = """
-        Table: product
-        - product_id (UUID, PK)
-        - name (TEXT)
-        - description (TEXT)
-        - price (NUMERIC)
-        - category_id (INTEGER, FK)
-        - sku (TEXT)
-        - product_url (TEXT)
-        - currency (CHAR(3))
-        - is_active (BOOLEAN)
-        - sale_price (NUMERIC)
-        - stock (INTEGER)
-        - photos (TEXT[])
-        - colors (JSONB)
-        - sizes (TEXT[])
-        - materials (TEXT)
-        - care (TEXT)
-        - featured (BOOLEAN)
-        - category_name (TEXT)
-        - created_at, updated_at (TIMESTAMP)
+        === E-COMMERCE DATABASE SCHEMA ===
         
-        Table: category
-        - category_id (INTEGER, PK)
-        - name (VARCHAR(255))
-        - parent_category_id (INTEGER, FK, nullable)
-        - type (TEXT)
-        - created_at, updated_at (TIMESTAMP)
+        CORE TABLES:
         
-        Table: "user" (quoted - reserved word)
-        - user_id (UUID, PK) - DO NOT USE FOR JOINS WITH ORDERS
-        - email (TEXT, UNIQUE) - USE THIS TO JOIN WITH order.user_id
-        - full_name (TEXT)
-        - phone (TEXT)
-        - address (TEXT)
-        - date_of_birth (DATE)
-        - job (TEXT)
-        - gender (TEXT)
-        - role_id (INTEGER, FK)
-        - is_active (BOOLEAN)
-        - uid (TEXT)
-        - photo_url (TEXT)
-        - provider (TEXT)
-        - role (TEXT, default 'user')
-        - created_at, updated_at (TIMESTAMP)
+        1. product (Product Catalog)
+           - product_id (UUID, PK)
+           - name (TEXT) - Product name
+           - description (TEXT) - Product description
+           - price (NUMERIC) - Current price
+           - sale_price (NUMERIC) - Discounted price if on sale
+           - sku (TEXT, UNIQUE) - Stock keeping unit
+           - category_id (INTEGER, FK → category.category_id)
+           - category_name (TEXT) - Denormalized category name
+           - stock (INTEGER) - Available quantity
+           - photos (TEXT[]) - Array of photo URLs
+           - colors (JSONB) - Available colors
+           - sizes (TEXT[]) - Available sizes
+           - materials (TEXT) - Material information
+           - care (TEXT) - Care instructions
+           - featured (BOOLEAN) - Is featured product
+           - is_active (BOOLEAN) - Is currently active
+           - currency (CHAR(3)) - Currency code (USD)
+           - created_at, updated_at (TIMESTAMP)
         
-        Table: roles_bk
-        - role_id (INTEGER, PK)
-        - role_name (TEXT)
-        - is_active (BOOLEAN)
-        - created_at, updated_at (TIMESTAMP)
+        2. category (Product Categories - Hierarchical)
+           - category_id (INTEGER, PK)
+           - name (VARCHAR(255)) - Category name
+           - parent_category_id (INTEGER, FK → category.category_id, NULLABLE) - Self-referencing for hierarchy
+           - type (TEXT) - Category type
+           - created_at, updated_at (TIMESTAMP)
         
-        Table: "order" (quoted - reserved word)
-        - order_id (UUID, PK)
-        - user_id (TEXT) - CRITICAL: Contains EMAIL/TEXT! Join: "user".email = "order".user_id
-        - status (TEXT)
-        - order_total (NUMERIC)
-        - currency (CHAR(3))
-        - shipping_info (JSONB)
-        - created_at, updated_at (TIMESTAMP)
-        - subtotal, tax, discount, shipping_charges (NUMERIC)
+        3. "user" (Customer Accounts) **RESERVED WORD - ALWAYS QUOTE**
+           - user_id (UUID, PK) **WARNING: DO NOT use for order joins!**
+           - email (TEXT, UNIQUE) **CRITICAL: Use this to join with "order".user_id**
+           - uid (TEXT, UNIQUE) - External user ID
+           - full_name (TEXT) - Customer full name
+           - phone (TEXT) - Phone number
+           - address (TEXT) - Delivery address
+           - date_of_birth (DATE) - Birthday
+           - job (TEXT) - Occupation
+           - gender (TEXT) - Gender
+           - role_id (INTEGER, FK → roles_bk.role_id)
+           - role (TEXT, default 'user') - User role
+           - is_active (BOOLEAN) - Account status
+           - photo_url (TEXT) - Profile photo
+           - provider (TEXT) - Auth provider
+           - password_hash (TEXT) - Hashed password
+           - created_at, updated_at (TIMESTAMP)
         
-        Table: order_item
-        - order_item_id (UUID, PK)
-        - order_id (UUID, FK)
-        - product_id (UUID, FK)
-        - quantity (INTEGER)
-        - unit_price (NUMERIC)
-        - total_price (NUMERIC)
-        - created_at, updated_at (TIMESTAMP)
+        4. "order" (Customer Orders) **RESERVED WORD - ALWAYS QUOTE**
+           - order_id (UUID, PK)
+           - user_id (TEXT) **CRITICAL: Contains EMAIL (not UUID)! Join: "user".email = "order".user_id**
+           - status (TEXT) - Order status (pending, processing, completed, cancelled)
+           - order_total (NUMERIC) - Total order amount
+           - subtotal (NUMERIC) - Subtotal before taxes
+           - tax (NUMERIC) - Tax amount
+           - discount (NUMERIC) - Discount applied
+           - shipping_charges (NUMERIC) - Shipping cost
+           - currency (CHAR(3)) - Currency code
+           - shipping_info (JSONB) - Shipping address and details
+           - created_at, updated_at (TIMESTAMP)
         
-        Table: cart
-        - cart_id (INTEGER, PK)
-        - user_id (UUID, FK)
-        - status (cart_status)
-        - total_price (NUMERIC)
-        - created_at, updated_at (TIMESTAMP)
+        5. order_item (Items in Orders)
+           - order_item_id (UUID, PK)
+           - order_id (UUID, FK → "order".order_id)
+           - product_id (UUID, FK → product.product_id)
+           - quantity (INTEGER) - Item quantity
+           - unit_price (NUMERIC) - Price per unit
+           - total_price (NUMERIC) - quantity × unit_price
+           - created_at, updated_at (TIMESTAMP)
         
-        Table: cart_item
-        - cart_item_id (INTEGER, PK)
-        - cart_id (INTEGER, FK)
-        - product_id (UUID, FK)
-        - quantity (INTEGER)
-        - unit_price (NUMERIC)
-        - total_price (NUMERIC)
-        - created_at, updated_at (TIMESTAMP)
+        6. cart (Shopping Carts)
+           - cart_id (INTEGER, PK)
+           - user_id (UUID, FK → "user".user_id)
+           - status (cart_status) - Cart status (active, abandoned, converted)
+           - total_price (NUMERIC) - Cart total
+           - created_at, updated_at (TIMESTAMP)
         
-        Table: payment
-        - payment_id (UUID, PK)
-        - order_id (UUID, FK)
-        - amount (NUMERIC)
-        - method (VARCHAR(50))
-        - status (VARCHAR(50))
-        - paid_at (TIMESTAMP)
-        - created_at, updated_at (TIMESTAMP)
+        7. cart_item (Items in Shopping Carts)
+           - cart_item_id (INTEGER, PK)
+           - cart_id (INTEGER, FK → cart.cart_id)
+           - product_id (UUID, FK → product.product_id)
+           - quantity (INTEGER) - Item quantity
+           - unit_price (NUMERIC) - Price per unit
+           - total_price (NUMERIC) - quantity × unit_price
+           - created_at, updated_at (TIMESTAMP)
         
-        Table: shipment
-        - shipment_id (UUID, PK)
-        - order_id (UUID, FK)
-        - tracking_number (VARCHAR(255))
-        - status (VARCHAR(50))
-        - shipped_at (TIMESTAMP)
-        - delivered_at (TIMESTAMP)
-        - carrier_id (UUID, FK to user)
-        - created_at, updated_at (TIMESTAMP)
+        8. payment (Payment Transactions)
+           - payment_id (UUID, PK)
+           - order_id (UUID, FK → "order".order_id)
+           - amount (NUMERIC) - Payment amount
+           - method (VARCHAR(50)) - Payment method (credit_card, paypal, etc.)
+           - status (VARCHAR(50)) - Payment status (pending, completed, failed)
+           - paid_at (TIMESTAMP) - Payment timestamp
+           - created_at, updated_at (TIMESTAMP)
         
-        Table: inventory
-        - inventory_id (UUID, PK)
-        - product_id (UUID, FK)
-        - warehouse_id (UUID)
-        - quantity (INTEGER)
-        - last_updated (TIMESTAMP)
+        9. shipment (Order Shipments)
+           - shipment_id (UUID, PK)
+           - order_id (UUID, FK → "order".order_id)
+           - tracking_number (VARCHAR(255)) - Tracking number
+           - status (VARCHAR(50)) - Shipment status (preparing, shipped, in_transit, delivered)
+           - carrier_id (UUID, FK → "user".user_id) - Delivery carrier
+           - shipped_at (TIMESTAMP) - Shipment date
+           - delivered_at (TIMESTAMP) - Delivery date
+           - created_at, updated_at (TIMESTAMP)
         
-        Table: product_review
-        - product_review_id (UUID, PK)
-        - product_id (UUID, FK)
-        - user_id (UUID, FK)
-        - rating (INTEGER, 1-5)
-        - comment (TEXT)
-        - created_at, updated_at (TIMESTAMP)
+        10. product_review (Product Reviews & Ratings)
+            - product_review_id (UUID, PK)
+            - product_id (UUID, FK → product.product_id)
+            - user_id (UUID, FK → "user".user_id)
+            - rating (INTEGER) - 1-5 stars
+            - comment (TEXT) - Review text
+            - created_at, updated_at (TIMESTAMP)
         
-        Table: coupon
-        - coupon_id (UUID, PK)
-        - code (VARCHAR(100), UNIQUE)
-        - discount_type (VARCHAR(20)) - 'percent' or 'amount'
-        - value (NUMERIC)
-        - amount (NUMERIC)
-        - valid_from (TIMESTAMP)
-        - valid_to (TIMESTAMP)
-        - usage_count (INTEGER)
-        - created_at, updated_at (TIMESTAMP)
+        11. inventory (Stock Management)
+            - inventory_id (UUID, PK)
+            - product_id (UUID, FK → product.product_id)
+            - warehouse_id (UUID) - Warehouse identifier
+            - quantity (INTEGER) - Stock quantity
+            - last_updated (TIMESTAMP) - Last inventory update
         
-        Table: event
-        - event_id (UUID, PK)
-        - user_id (UUID, FK, nullable)
-        - session_id (VARCHAR(255))
-        - event_type (VARCHAR(255))
-        - metadata (JSONB)
-        - ts (TIMESTAMP)
+        12. coupon (Discount Coupons)
+            - coupon_id (UUID, PK)
+            - code (VARCHAR(100), UNIQUE) - Coupon code
+            - discount_type (VARCHAR(20)) - 'percent' or 'amount'
+            - value (NUMERIC) - Discount value
+            - amount (NUMERIC) - Alternative discount amount
+            - valid_from (TIMESTAMP) - Start date
+            - valid_to (TIMESTAMP) - End date
+            - usage_count (INTEGER) - Times used
+            - created_at, updated_at (TIMESTAMP)
         
-        Table: chat_history
-        - id (INTEGER, PK)
-        - session_id (TEXT)
-        - customer_id (TEXT)
-        - user_message (TEXT)
-        - bot_response (TEXT)
-        - timestamp (TIMESTAMP)
-        - metadata (JSONB)
+        13. event (User Activity Events)
+            - event_id (UUID, PK)
+            - user_id (UUID, FK → "user".user_id, NULLABLE)
+            - session_id (VARCHAR(255)) - Session identifier
+            - event_type (VARCHAR(255)) - Event type (page_view, add_to_cart, etc.)
+            - metadata (JSONB) - Event metadata
+            - ts (TIMESTAMP) - Event timestamp
+        
+        14. roles_bk (User Roles)
+            - role_id (INTEGER, PK)
+            - role_name (TEXT) - Role name (admin, customer, vendor)
+            - is_active (BOOLEAN) - Role status
+            - created_at, updated_at (TIMESTAMP)
+        
+        === COMMON JOIN PATTERNS ===
+        
+        Orders with Customer Info:
+        SELECT * FROM "order" o 
+        JOIN "user" u ON u.email = o.user_id
+        
+        Orders with Items and Products:
+        SELECT * FROM "order" o
+        JOIN order_item oi ON oi.order_id = o.order_id
+        JOIN product p ON p.product_id = oi.product_id
+        
+        Orders with Payment Status:
+        SELECT * FROM "order" o
+        JOIN payment p ON p.order_id = o.order_id
+        
+        Orders with Shipment Tracking:
+        SELECT * FROM "order" o
+        JOIN shipment s ON s.order_id = o.order_id
+        
+        Products with Reviews:
+        SELECT * FROM product p
+        LEFT JOIN product_review pr ON pr.product_id = p.product_id
+        
+        Products with Inventory:
+        SELECT * FROM product p
+        LEFT JOIN inventory i ON i.product_id = p.product_id
+        
+        Products by Category:
+        SELECT * FROM product p
+        JOIN category c ON c.category_id = p.category_id
+        
+        User Activity:
+        SELECT * FROM "user" u
+        LEFT JOIN "order" o ON o.user_id = u.email
+        LEFT JOIN event e ON e.user_id = u.user_id
         """
         
         prompt = f"""
-        You are a PostgreSQL expert with ADMIN access. Generate a valid SQL query to answer the user's question based on the schema below.
+        You are a PostgreSQL expert generating SQL queries for an e-commerce analytics platform.
         
-        Schema:
+        SCHEMA:
         {schema}
         
-        Instructions:
-        - You have full access to ALL data in the database (no customer_id restrictions)
-        - Use appropriate JOINs to combine data from multiple tables when needed
-        - CRITICAL: Tables "user" and "order" are PostgreSQL reserved words - ALWAYS quote them: "user", "order"
-        - CRITICAL: When joining user and order tables, ALWAYS use: "user".email = "order".user_id
-          ("order".user_id contains EMAIL/TEXT, NOT UUID!)
-        - Example correct join: SELECT u.full_name, COUNT(o.order_id) FROM "user" u JOIN "order" o ON u.email = o.user_id
-        - Use LIKE or ILIKE for text comparisons (case-insensitive)
-        - For aggregations, use GROUP BY, COUNT, SUM, AVG as appropriate
-        - Limit results to 10 unless specified otherwise
-        - Order results by most relevant columns (e.g., created_at DESC, rating DESC)
-        - Return ONLY the SQL query, no markdown, no explanation
-        - Make sure column names and table names match the schema exactly
-        - Use singular table names: product, category, "user", "order", payment, shipment, etc.
+        CRITICAL RULES:
+        1. **Reserved Words**: ALWAYS quote "user" and "order" tables
+           ✓ Correct: SELECT * FROM "user" u JOIN "order" o
+           ✗ Wrong: SELECT * FROM user u JOIN order o
+        
+        2. **User-Order Join**: "order".user_id contains EMAIL (TEXT), NOT UUID
+           ✓ Correct: "user".email = "order".user_id
+           ✗ Wrong: "user".user_id = "order".user_id
+        
+        3. **Table Relationships**: Use proper foreign keys
+           - order_item.order_id → "order".order_id
+           - order_item.product_id → product.product_id
+           - payment.order_id → "order".order_id
+           - shipment.order_id → "order".order_id
+           - cart.user_id → "user".user_id (UUID, correct!)
+           - product_review.user_id → "user".user_id (UUID, correct!)
+        
+        4. **Column Selection**: Be specific with column names from schema
+        
+        5. **Aggregations**: Use appropriate GROUP BY with COUNT, SUM, AVG, MAX, MIN
+        
+        6. **Ordering**: Sort by relevant columns (order_total DESC, created_at DESC, rating DESC)
+        
+        7. **Limiting**: Default LIMIT 10 for lists, LIMIT 5 for top/bottom queries
+        
+        8. **Case Sensitivity**: Use ILIKE for case-insensitive text searches
+        
+        9. **Date Filtering**: Use created_at, updated_at, paid_at, shipped_at as needed
+        
+        10. **Output Format**: Return ONLY the SQL query, no markdown, no explanations
+        
+        EXAMPLE QUERIES:
+        
+        Q: "Show top 5 orders by value"
+        A: SELECT order_id, user_id, order_total, status, created_at FROM "order" ORDER BY order_total DESC LIMIT 5
+        
+        Q: "Which customers spent the most?"
+        A: SELECT u.full_name, u.email, COUNT(o.order_id) as order_count, SUM(o.order_total) as total_spent FROM "user" u JOIN "order" o ON u.email = o.user_id GROUP BY u.user_id, u.full_name, u.email ORDER BY total_spent DESC LIMIT 10
+        
+        Q: "Products with best ratings"
+        A: SELECT p.name, p.price, AVG(pr.rating) as avg_rating, COUNT(pr.product_review_id) as review_count FROM product p JOIN product_review pr ON pr.product_id = p.product_id GROUP BY p.product_id, p.name, p.price HAVING COUNT(pr.product_review_id) >= 3 ORDER BY avg_rating DESC LIMIT 10
+        
+        Q: "Orders pending shipment"
+        A: SELECT o.order_id, o.order_total, o.created_at, u.full_name, u.email FROM "order" o JOIN "user" u ON u.email = o.user_id LEFT JOIN shipment s ON s.order_id = o.order_id WHERE s.shipment_id IS NULL AND o.status != 'cancelled' ORDER BY o.created_at ASC
         
         User Question: {query}
+        
+        Generate the SQL query:
         """
         
         try:
