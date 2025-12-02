@@ -1,6 +1,6 @@
 """
 Cloud Cart Embedding DAG
-Generates embeddings for carts table in cloud PostgreSQL.
+Generates embeddings for cart table in cloud PostgreSQL.
 Schedule: Daily at 6:00 AM (MEDIUM priority)
 """
 from datetime import datetime, timedelta
@@ -10,6 +10,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 import json
 import logging
+import tiktoken
 
 from utils.embedding_generator import EmbeddingGenerator
 from utils.data_preprocessor import DataPreprocessor
@@ -34,19 +35,19 @@ default_args = {
 dag = DAG(
     'cloud_cart_embedding_generation',
     default_args=default_args,
-    description='Generate embeddings for cloud carts table',
+    description='Generate embeddings for cloud cart table',
     schedule_interval=config['schedules']['cart_embedding'],
     catchup=False,
-    tags=['cloud', 'embedding', 'carts', 'medium-priority'],
+    tags=['cloud', 'embedding', 'cart', 'medium-priority'],
 )
 
 
-def fetch_carts_without_embeddings(**context):
+def fetch_cart_without_embeddings(**context):
     postgres_hook = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
     
     query = """
-        SELECT id, user_id, status, total_price, created_at, updated_at
-        FROM carts
+        SELECT cart_id, user_id, status, total_price, created_at, updated_at
+        FROM cart
         WHERE embedding IS NULL
         ORDER BY created_at DESC;
     """
@@ -59,11 +60,11 @@ def fetch_carts_without_embeddings(**context):
         columns = [desc[0] for desc in cursor.description]
         records = cursor.fetchall()
         
-        carts = [dict(zip(columns, record)) for record in records]
-        logger.info(f"Found {len(carts)} carts without embeddings")
+        cart = [dict(zip(columns, record)) for record in records]
+        logger.info(f"Found {len(cart)} cart without embeddings")
         
-        context['ti'].xcom_push(key='carts', value=carts)
-        return len(carts)
+        context['ti'].xcom_push(key='cart', value=cart)
+        return len(cart)
         
     finally:
         cursor.close()
@@ -71,16 +72,16 @@ def fetch_carts_without_embeddings(**context):
 
 
 def process_and_generate_embeddings(**context):
-    carts = context['ti'].xcom_pull(key='carts', task_ids='fetch_carts')
+    cart = context['ti'].xcom_pull(key='cart', task_ids='fetch_cart')
     
-    if not carts:
-        logger.info("No carts to process")
+    if not cart:
+        logger.info("No cart to process")
         return 0
     
-    df = DataPreprocessor.preprocess_cloud_cart_records(carts)
+    df = DataPreprocessor.preprocess_cloud_cart_records(cart)
     
     if df.empty:
-        logger.warning("No valid carts after preprocessing")
+        logger.warning("No valid cart after preprocessing")
         return 0
     
     api_key = Variable.get('GOOGLE_API_KEY')
@@ -90,12 +91,18 @@ def process_and_generate_embeddings(**context):
     )
     
     texts = df['combined_text'].tolist()
+    
+    # Count tokens using tiktoken
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = sum(len(encoding.encode(text)) for text in texts)
+    logger.info(f"Token count before embedding: {total_tokens} tokens for {len(texts)} texts")
+    
     embeddings = embedding_generator.generate_embeddings(texts)
     
     cart_embeddings = []
     for i, row in df.iterrows():
         cart_embeddings.append({
-            'id': row['id'],
+            'cart_id': row['cart_id'],
             'embedding': embeddings[i]
         })
     
@@ -120,14 +127,14 @@ def update_cart_embeddings(**context):
     
     try:
         update_query = """
-            UPDATE carts
+            UPDATE cart
             SET embedding = %s::vector
-            WHERE id = %s;
+            WHERE cart_id = %s;
         """
         
         for item in cart_embeddings:
             embedding_str = '[' + ','.join(map(str, item['embedding'])) + ']'
-            cursor.execute(update_query, (embedding_str, item['id']))
+            cursor.execute(update_query, (embedding_str, item['cart_id']))
         
         connection.commit()
         logger.info(f"Updated {len(cart_embeddings)} cart embeddings")
@@ -143,8 +150,8 @@ def update_cart_embeddings(**context):
 
 
 fetch_task = PythonOperator(
-    task_id='fetch_carts',
-    python_callable=fetch_carts_without_embeddings,
+    task_id='fetch_cart',
+    python_callable=fetch_cart_without_embeddings,
     dag=dag,
 )
 

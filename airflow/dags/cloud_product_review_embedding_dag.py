@@ -10,6 +10,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 import json
 import logging
+import tiktoken
 
 from utils.embedding_generator import EmbeddingGenerator
 from utils.data_preprocessor import DataPreprocessor
@@ -46,11 +47,11 @@ def fetch_reviews_without_embeddings(**context):
     postgres_hook = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
     
     query = """
-        SELECT review_id, product_id, user_id, rating, review_text, 
-               review_date, helpful_count
-        FROM product_reviews
+        SELECT product_review_id, product_id, user_id, rating, comment, 
+               created_at
+        FROM product_review
         WHERE embedding IS NULL
-        ORDER BY review_date DESC;
+        ORDER BY created_at DESC;
     """
     
     connection = postgres_hook.get_conn()
@@ -93,12 +94,18 @@ def process_and_generate_embeddings(**context):
     )
     
     texts = df['combined_text'].tolist()
+    
+    # Count tokens using tiktoken
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = sum(len(encoding.encode(text)) for text in texts)
+    logger.info(f"Token count before embedding: {total_tokens} tokens for {len(texts)} texts")
+    
     embeddings = embedding_generator.generate_embeddings(texts)
     
     review_embeddings = []
     for i, row in df.iterrows():
         review_embeddings.append({
-            'review_id': row['review_id'],
+            'product_review_id': row['product_review_id'],
             'embedding': embeddings[i]
         })
     
@@ -124,14 +131,14 @@ def update_review_embeddings(**context):
     
     try:
         update_query = """
-            UPDATE product_reviews
+            UPDATE product_review
             SET embedding = %s::vector
-            WHERE review_id = %s;
+            WHERE product_review_id = %s;
         """
         
         for item in review_embeddings:
             embedding_str = '[' + ','.join(map(str, item['embedding'])) + ']'
-            cursor.execute(update_query, (embedding_str, item['review_id']))
+            cursor.execute(update_query, (embedding_str, item['product_review_id']))
         
         connection.commit()
         logger.info(f"Updated {len(review_embeddings)} review embeddings")

@@ -10,6 +10,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 import json
 import logging
+import tiktoken
 
 from utils.embedding_generator import EmbeddingGenerator
 from utils.data_preprocessor import DataPreprocessor
@@ -46,7 +47,7 @@ def fetch_payments_without_embeddings(**context):
     
     query = """
         SELECT payment_id, order_id, method, amount, status, paid_at
-        FROM payments
+        FROM payment
         WHERE embedding IS NULL
         ORDER BY paid_at DESC;
     """
@@ -90,6 +91,12 @@ def process_and_generate_embeddings(**context):
     )
     
     texts = df['combined_text'].tolist()
+    
+    # Count tokens using tiktoken
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = sum(len(encoding.encode(text)) for text in texts)
+    logger.info(f"Token count before embedding: {total_tokens} tokens for {len(texts)} texts")
+    
     embeddings = embedding_generator.generate_embeddings(texts)
     
     payment_embeddings = []
@@ -120,7 +127,7 @@ def update_payment_embeddings(**context):
     
     try:
         update_query = """
-            UPDATE payments
+            UPDATE payment
             SET embedding = %s::vector
             WHERE payment_id = %s;
         """

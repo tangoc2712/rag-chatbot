@@ -10,6 +10,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 import json
 import logging
+import tiktoken
 
 from utils.embedding_generator import EmbeddingGenerator
 from utils.data_preprocessor import DataPreprocessor
@@ -49,7 +50,7 @@ def fetch_products_without_embeddings(**context):
     query = """
         SELECT product_id, name, description, price, category_id, sku,
                product_url, currency, is_active, created_at, updated_at
-        FROM products
+        FROM product
         WHERE embedding IS NULL
         ORDER BY created_at DESC;
     """
@@ -98,6 +99,12 @@ def process_and_generate_embeddings(**context):
     )
     
     texts = df['combined_text'].tolist()
+    
+    # Count tokens using tiktoken
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = sum(len(encoding.encode(text)) for text in texts)
+    logger.info(f"Token count before embedding: {total_tokens} tokens for {len(texts)} texts")
+    
     embeddings = embedding_generator.generate_embeddings(texts)
     
     # Prepare data for database update
@@ -132,7 +139,7 @@ def update_product_embeddings(**context):
     
     try:
         update_query = """
-            UPDATE products
+            UPDATE product
             SET embedding = %s::vector
             WHERE product_id = %s;
         """

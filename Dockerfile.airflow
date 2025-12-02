@@ -15,8 +15,9 @@ USER airflow
 # Copy requirements file
 COPY requirements.txt /tmp/requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# Install Python dependencies (--trusted-host to avoid SSL/hash issues)
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Install additional Airflow providers
 RUN pip install --no-cache-dir \

@@ -10,6 +10,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 import json
 import logging
+import tiktoken
 
 from utils.embedding_generator import EmbeddingGenerator
 from utils.data_preprocessor import DataPreprocessor
@@ -45,8 +46,8 @@ def fetch_cart_items_without_embeddings(**context):
     postgres_hook = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
     
     query = """
-        SELECT id, cart_id, product_id, quantity, unit_price, total_price, created_at
-        FROM cart_items
+        SELECT cart_item_id, cart_id, product_id, quantity, unit_price, total_price, created_at
+        FROM cart_item
         WHERE embedding IS NULL
         ORDER BY created_at DESC;
     """
@@ -90,12 +91,18 @@ def process_and_generate_embeddings(**context):
     )
     
     texts = df['combined_text'].tolist()
+    
+    # Count tokens using tiktoken
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = sum(len(encoding.encode(text)) for text in texts)
+    logger.info(f"Token count before embedding: {total_tokens} tokens for {len(texts)} texts")
+    
     embeddings = embedding_generator.generate_embeddings(texts)
     
     cart_item_embeddings = []
     for i, row in df.iterrows():
         cart_item_embeddings.append({
-            'id': row['id'],
+            'cart_item_id': row['cart_item_id'],
             'embedding': embeddings[i]
         })
     
@@ -120,14 +127,14 @@ def update_cart_item_embeddings(**context):
     
     try:
         update_query = """
-            UPDATE cart_items
+            UPDATE cart_item
             SET embedding = %s::vector
-            WHERE id = %s;
+            WHERE cart_item_id = %s;
         """
         
         for item in cart_item_embeddings:
             embedding_str = '[' + ','.join(map(str, item['embedding'])) + ']'
-            cursor.execute(update_query, (embedding_str, item['id']))
+            cursor.execute(update_query, (embedding_str, item['cart_item_id']))
         
         connection.commit()
         logger.info(f"Updated {len(cart_item_embeddings)} cart item embeddings")

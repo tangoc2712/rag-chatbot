@@ -1,12 +1,18 @@
+import sys
+from pathlib import Path
+
+# Add project root to path for direct execution
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
-from .endpoints import (
+from src.api.endpoints import (
     orders, products, chat, users, categories, 
     reviews, inventory, coupons, shipments, payments
 )
-from ..config import Settings
+from src.config import Settings
 
 # Initialize FastAPI app
 app = FastAPI(

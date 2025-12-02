@@ -10,6 +10,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 import json
 import logging
+import tiktoken
 
 from utils.embedding_generator import EmbeddingGenerator
 from utils.data_preprocessor import DataPreprocessor
@@ -47,7 +48,7 @@ def fetch_coupons_without_embeddings(**context):
     query = """
         SELECT coupon_id, code, discount_type, value, valid_from, 
                valid_to, usage_count, created_at, updated_at
-        FROM coupons
+        FROM coupon
         WHERE embedding IS NULL
         ORDER BY created_at DESC;
     """
@@ -91,6 +92,12 @@ def process_and_generate_embeddings(**context):
     )
     
     texts = df['combined_text'].tolist()
+    
+    # Count tokens using tiktoken
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = sum(len(encoding.encode(text)) for text in texts)
+    logger.info(f"Token count before embedding: {total_tokens} tokens for {len(texts)} texts")
+    
     embeddings = embedding_generator.generate_embeddings(texts)
     
     coupon_embeddings = []
@@ -121,7 +128,7 @@ def update_coupon_embeddings(**context):
     
     try:
         update_query = """
-            UPDATE coupons
+            UPDATE coupon
             SET embedding = %s::vector
             WHERE coupon_id = %s;
         """

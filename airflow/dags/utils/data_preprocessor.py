@@ -134,7 +134,7 @@ class DataPreprocessor:
         df['combined_text'] = (
             'Product: ' + df['product_id'].fillna('').astype(str) + ' ' +
             'Rating: ' + df['rating'].fillna(0).astype(str) + '/5 ' +
-            df['review_text'].fillna('').astype(str) + ' ' +
+            df['comment'].fillna('').astype(str) + ' ' +
             'User: ' + df['user_id'].fillna('').astype(str)
         )
         df['combined_text'] = df['combined_text'].str.strip()

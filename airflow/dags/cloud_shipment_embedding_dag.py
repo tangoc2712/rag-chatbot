@@ -10,6 +10,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import Variable
 import json
 import logging
+import tiktoken
 
 from utils.embedding_generator import EmbeddingGenerator
 from utils.data_preprocessor import DataPreprocessor
@@ -47,7 +48,7 @@ def fetch_shipments_without_embeddings(**context):
     query = """
         SELECT shipment_id, order_id, tracking_number, status, 
                shipped_at, delivered_at, carrier_id
-        FROM shipments
+        FROM shipment
         WHERE embedding IS NULL
         ORDER BY shipped_at DESC;
     """
@@ -91,6 +92,12 @@ def process_and_generate_embeddings(**context):
     )
     
     texts = df['combined_text'].tolist()
+    
+    # Count tokens using tiktoken
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = sum(len(encoding.encode(text)) for text in texts)
+    logger.info(f"Token count before embedding: {total_tokens} tokens for {len(texts)} texts")
+    
     embeddings = embedding_generator.generate_embeddings(texts)
     
     shipment_embeddings = []
@@ -121,7 +128,7 @@ def update_shipment_embeddings(**context):
     
     try:
         update_query = """
-            UPDATE shipments
+            UPDATE shipment
             SET embedding = %s::vector
             WHERE shipment_id = %s;
         """
