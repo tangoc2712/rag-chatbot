@@ -40,7 +40,7 @@ async def search_products(
                 # Build Query
                 sql = """
                     SELECT *, embedding <=> %s::vector as distance 
-                    FROM products 
+                    FROM product 
                     WHERE 1=1
                 """
                 params = [query_embedding]

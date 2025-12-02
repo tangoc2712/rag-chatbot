@@ -15,9 +15,9 @@ async def get_shipments(limit: int = 50, status: Optional[str] = None):
     
     try:
         query = """
-            SELECT s.*, o.user_id, o.total_amount
-            FROM shipments s
-            LEFT JOIN orders o ON s.order_id = o.order_id
+            SELECT s.*, o.user_id, o.order_total
+            FROM shipment s
+            LEFT JOIN \"order\" o ON s.order_id = o.order_id
         """
         params = []
         
@@ -25,7 +25,7 @@ async def get_shipments(limit: int = 50, status: Optional[str] = None):
             query += " WHERE s.status = %s"
             params.append(status)
         
-        query += " ORDER BY s.shipment_date DESC LIMIT %s"
+        query += " ORDER BY s.shipped_at DESC LIMIT %s"
         params.append(limit)
         
         cur.execute(query, params)
@@ -50,9 +50,9 @@ async def track_shipment(tracking_number: str):
     
     try:
         cur.execute("""
-            SELECT s.*, o.user_id, o.total_amount, o.status as order_status
-            FROM shipments s
-            LEFT JOIN orders o ON s.order_id = o.order_id
+            SELECT s.*, o.user_id, o.order_total, o.status as order_status
+            FROM shipment s
+            LEFT JOIN \"order\" o ON s.order_id = o.order_id
             WHERE s.tracking_number = %s
         """, (tracking_number,))
         
@@ -81,8 +81,8 @@ async def get_order_shipment(order_id: int):
     
     try:
         cur.execute("""
-            SELECT * FROM shipments WHERE order_id = %s
-            ORDER BY shipment_date DESC
+            SELECT * FROM shipment WHERE order_id = %s
+            ORDER BY shipped_at DESC
         """, (order_id,))
         
         columns = [desc[0] for desc in cur.description]

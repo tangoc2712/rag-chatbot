@@ -14,10 +14,10 @@ async def get_coupons(active_only: bool = True):
     cur = conn.cursor()
     
     try:
-        query = "SELECT * FROM coupons"
+        query = "SELECT * FROM coupon"
         
         if active_only:
-            query += " WHERE is_active = true AND end_date > NOW()"
+            query += " WHERE valid_to >= CURRENT_TIMESTAMP"
         
         query += " ORDER BY created_at DESC"
         
@@ -43,8 +43,8 @@ async def get_coupon_by_code(coupon_code: str):
     
     try:
         cur.execute("""
-            SELECT * FROM coupons 
-            WHERE coupon_code = %s AND is_active = true AND end_date > NOW()
+            SELECT * FROM coupon 
+            WHERE code = %s AND valid_to >= CURRENT_TIMESTAMP
         """, (coupon_code,))
         
         columns = [desc[0] for desc in cur.description]

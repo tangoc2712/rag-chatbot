@@ -15,17 +15,17 @@ async def get_payments(limit: int = 50, status: Optional[str] = None):
     
     try:
         query = """
-            SELECT p.*, o.user_id, o.total_amount as order_total
-            FROM payments p
-            LEFT JOIN orders o ON p.order_id = o.order_id
+            SELECT p.*, o.user_id, o.order_total
+            FROM payment p
+            LEFT JOIN \"order\" o ON p.order_id = o.order_id
         """
         params = []
         
         if status:
-            query += " WHERE p.payment_status = %s"
+            query += " WHERE p.status = %s"
             params.append(status)
         
-        query += " ORDER BY p.payment_date DESC LIMIT %s"
+        query += " ORDER BY p.paid_at DESC LIMIT %s"
         params.append(limit)
         
         cur.execute(query, params)
@@ -50,8 +50,8 @@ async def get_order_payment(order_id: int):
     
     try:
         cur.execute("""
-            SELECT * FROM payments WHERE order_id = %s
-            ORDER BY payment_date DESC
+            SELECT * FROM payment WHERE order_id = %s
+            ORDER BY paid_at DESC
         """, (order_id,))
         
         columns = [desc[0] for desc in cur.description]
@@ -67,19 +67,19 @@ async def get_order_payment(order_id: int):
         cur.close()
         conn.close()
 
-@router.get("/payments/transaction/{transaction_id}")
-async def get_payment_by_transaction(transaction_id: str):
-    """Get payment by transaction ID"""
+@router.get("/payments/{payment_id}")
+async def get_payment_by_id(payment_id: str):
+    """Get payment by payment ID"""
     conn = get_db_connection()
     cur = conn.cursor()
     
     try:
         cur.execute("""
             SELECT p.*, o.user_id
-            FROM payments p
-            LEFT JOIN orders o ON p.order_id = o.order_id
-            WHERE p.transaction_id = %s
-        """, (transaction_id,))
+            FROM payment p
+            LEFT JOIN \"order\" o ON p.order_id = o.order_id
+            WHERE p.payment_id = %s
+        """, (payment_id,))
         
         columns = [desc[0] for desc in cur.description]
         row = cur.fetchone()

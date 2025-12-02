@@ -16,9 +16,9 @@ async def get_reviews(limit: int = 50, min_rating: Optional[int] = None):
     try:
         query = """
             SELECT pr.*, p.name as product_name, u.full_name as reviewer_name
-            FROM product_reviews pr
-            LEFT JOIN products p ON pr.product_id = p.product_id
-            LEFT JOIN users u ON pr.user_id = u.user_id
+            FROM product_review pr
+            LEFT JOIN product p ON pr.product_id = p.product_id
+            LEFT JOIN \"user\" u ON pr.user_id = u.user_id
         """
         params = []
         
@@ -26,7 +26,7 @@ async def get_reviews(limit: int = 50, min_rating: Optional[int] = None):
             query += " WHERE pr.rating >= %s"
             params.append(min_rating)
         
-        query += " ORDER BY pr.review_date DESC LIMIT %s"
+        query += " ORDER BY pr.created_at DESC LIMIT %s"
         params.append(limit)
         
         cur.execute(query, params)
@@ -52,10 +52,10 @@ async def get_product_reviews(product_id: int, limit: int = 50):
     try:
         cur.execute("""
             SELECT pr.*, u.full_name as reviewer_name
-            FROM product_reviews pr
-            LEFT JOIN users u ON pr.user_id = u.user_id
+            FROM product_review pr
+            LEFT JOIN \"user\" u ON pr.user_id = u.user_id
             WHERE pr.product_id = %s
-            ORDER BY pr.review_date DESC
+            ORDER BY pr.created_at DESC
             LIMIT %s
         """, (product_id, limit))
         
@@ -67,7 +67,7 @@ async def get_product_reviews(product_id: int, limit: int = 50):
         # Get average rating
         cur.execute("""
             SELECT AVG(rating)::numeric(3,2) as avg_rating, COUNT(*) as total_reviews
-            FROM product_reviews
+            FROM product_review
             WHERE product_id = %s
         """, (product_id,))
         stats = cur.fetchone()

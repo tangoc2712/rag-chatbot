@@ -83,9 +83,6 @@ async def send_message(request: ChatRequest):
             timestamp=datetime.now().isoformat(),
             debug_info=debug_info
         )
-            session_id=session_id,
-            timestamp=datetime.now().isoformat()
-        )
         
     except Exception as e:
         logger.error(f"Error processing chat message: {e}")

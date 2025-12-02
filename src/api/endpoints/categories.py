@@ -8,22 +8,15 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.get("/categories")
-async def get_categories(is_active: Optional[bool] = None):
+async def get_categories():
     """Get all categories"""
     conn = get_db_connection()
     cur = conn.cursor()
     
     try:
-        query = "SELECT * FROM categories"
-        params = []
+        query = "SELECT * FROM category ORDER BY name"
         
-        if is_active is not None:
-            query += " WHERE is_active = %s"
-            params.append(is_active)
-        
-        query += " ORDER BY category_name"
-        
-        cur.execute(query, params)
+        cur.execute(query)
         columns = [desc[0] for desc in cur.description]
         rows = cur.fetchall()
         
@@ -44,7 +37,7 @@ async def get_category(category_id: int):
     cur = conn.cursor()
     
     try:
-        cur.execute("SELECT * FROM categories WHERE category_id = %s", (category_id,))
+        cur.execute("SELECT * FROM category WHERE category_id = %s", (category_id,))
         columns = [desc[0] for desc in cur.description]
         row = cur.fetchone()
         
@@ -70,7 +63,7 @@ async def get_category_products(category_id: int, limit: int = 50):
     
     try:
         cur.execute("""
-            SELECT * FROM products
+            SELECT * FROM product
             WHERE category_id = %s AND is_active = true
             ORDER BY created_at DESC
             LIMIT %s

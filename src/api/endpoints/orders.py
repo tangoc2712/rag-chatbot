@@ -14,9 +14,9 @@ async def get_customer_orders(
     try:
         with get_db_cursor(conn) as cur:
             cur.execute("""
-                SELECT * FROM orders 
-                WHERE customer_id = %s 
-                ORDER BY order_datetime DESC 
+                SELECT * FROM \"order\" 
+                WHERE user_id = %s 
+                ORDER BY created_at DESC 
                 LIMIT %s
             """, (str(customer_id), limit))
             orders = cur.fetchall()
@@ -40,9 +40,9 @@ async def get_orders_by_priority(
     try:
         with get_db_cursor(conn) as cur:
             cur.execute("""
-                SELECT * FROM orders 
-                WHERE LOWER(order_priority) = LOWER(%s)
-                ORDER BY order_datetime DESC 
+                SELECT * FROM \"order\" 
+                WHERE LOWER(status) = LOWER(%s)
+                ORDER BY created_at DESC 
                 LIMIT %s
             """, (priority, limit))
             orders = cur.fetchall()
@@ -50,7 +50,7 @@ async def get_orders_by_priority(
             if not orders:
                 raise HTTPException(
                     status_code=404, 
-                    detail=f"No orders found with priority {priority}"
+                    detail=f"No orders found with status {priority}"
                 )
             return orders
     finally:

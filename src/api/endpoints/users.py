@@ -14,7 +14,7 @@ async def get_users(limit: int = 50, is_active: Optional[bool] = None):
     cur = conn.cursor()
     
     try:
-        query = "SELECT * FROM users"
+        query = "SELECT * FROM \"user\""
         params = []
         
         if is_active is not None:
@@ -45,7 +45,7 @@ async def get_user(user_id: int):
     cur = conn.cursor()
     
     try:
-        cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+        cur.execute("SELECT * FROM \"user\" WHERE user_id = %s", (user_id,))
         columns = [desc[0] for desc in cur.description]
         row = cur.fetchone()
         
@@ -72,11 +72,11 @@ async def get_user_orders(user_id: int, limit: int = 20):
     try:
         cur.execute("""
             SELECT o.*, COUNT(oi.order_item_id) as item_count
-            FROM orders o
-            LEFT JOIN order_items oi ON o.order_id = oi.order_id
+            FROM \"order\" o
+            LEFT JOIN order_item oi ON o.order_id = oi.order_id
             WHERE o.user_id = %s
             GROUP BY o.order_id
-            ORDER BY o.order_date DESC
+            ORDER BY o.created_at DESC
             LIMIT %s
         """, (user_id, limit))
         

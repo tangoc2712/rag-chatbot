@@ -37,9 +37,9 @@ class ECommerceRAG:
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
-                    SELECT * FROM orders 
-                    WHERE customer_id = %s 
-                    ORDER BY order_datetime DESC
+                    SELECT * FROM "order" 
+                    WHERE user_id = %s 
+                    ORDER BY created_at DESC
                 """, (str(customer_id),))
                 return cur.fetchall()
         finally:
@@ -51,9 +51,9 @@ class ECommerceRAG:
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
-                    SELECT * FROM orders 
-                    WHERE LOWER(order_priority) = 'high' 
-                    ORDER BY order_datetime DESC 
+                    SELECT * FROM "order" 
+                    WHERE status = 'pending' 
+                    ORDER BY created_at DESC 
                     LIMIT 5
                 """)
                 return cur.fetchall()
@@ -327,29 +327,37 @@ When users ask who you are or about yourself, introduce yourself as:
     def generate_sql_query(self, query: str, customer_id: Optional[int] = None) -> str:
         """Generate SQL query from natural language"""
         schema = """
-        Table: products
-        - product_id (INTEGER, PK)
+        Table: product
+        - product_id (UUID, PK)
         - name (TEXT)
         - description (TEXT)
         - price (NUMERIC)
         - category_id (INTEGER, FK)
         - sku (TEXT)
         - product_url (TEXT)
-        - currency (TEXT)
+        - currency (CHAR(3))
         - is_active (BOOLEAN)
-        - created_at, updated_at (TIMESTAMP)
-        
-        Table: categories
-        - category_id (INTEGER, PK)
+        - sale_price (NUMERIC)
+        - stock (INTEGER)
+        - photos (TEXT[])
+        - colors (JSONB)
+        - sizes (TEXT[])
+        - materials (TEXT)
+        - care (TEXT)
+        - featured (BOOLEAN)
         - category_name (TEXT)
-        - parent_category_id (INTEGER, FK, nullable)
-        - description (TEXT)
-        - is_active (BOOLEAN)
         - created_at, updated_at (TIMESTAMP)
         
-        Table: users
+        Table: category
+        - category_id (INTEGER, PK)
+        - name (VARCHAR(255))
+        - parent_category_id (INTEGER, FK, nullable)
+        - type (TEXT)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: "user" (quoted - reserved word)
         - user_id (UUID, PK) - DO NOT USE FOR JOINS WITH ORDERS
-        - email (TEXT, UNIQUE) - USE THIS TO JOIN WITH orders.user_id
+        - email (TEXT, UNIQUE) - USE THIS TO JOIN WITH order.user_id
         - full_name (TEXT)
         - phone (TEXT)
         - address (TEXT)
@@ -358,105 +366,114 @@ When users ask who you are or about yourself, introduce yourself as:
         - gender (TEXT)
         - role_id (INTEGER, FK)
         - is_active (BOOLEAN)
+        - uid (TEXT)
+        - photo_url (TEXT)
+        - provider (TEXT)
+        - role (TEXT, default 'user')
         - created_at, updated_at (TIMESTAMP)
         
-        Table: roles
+        Table: roles_bk
         - role_id (INTEGER, PK)
         - role_name (TEXT)
-        - description (TEXT)
+        - is_active (BOOLEAN)
         - created_at, updated_at (TIMESTAMP)
         
-        Table: orders
+        Table: "order" (quoted - reserved word)
         - order_id (UUID, PK)
-        - user_id (TEXT) - CRITICAL: Contains EMAIL addresses! Join: users.email = orders.user_id
+        - user_id (TEXT) - CRITICAL: Contains EMAIL/TEXT! Join: "user".email = "order".user_id
         - status (TEXT)
         - order_total (NUMERIC)
-        - currency (TEXT)
+        - currency (CHAR(3))
+        - shipping_info (JSONB)
         - created_at, updated_at (TIMESTAMP)
         - subtotal, tax, discount, shipping_charges (NUMERIC)
         
-        Table: order_items
-        - order_item_id (INTEGER, PK)
-        - order_id (INTEGER, FK)
-        - product_id (INTEGER, FK)
+        Table: order_item
+        - order_item_id (UUID, PK)
+        - order_id (UUID, FK)
+        - product_id (UUID, FK)
         - quantity (INTEGER)
-        - price (NUMERIC)
-        - subtotal (NUMERIC)
-        - created_at (TIMESTAMP)
-        
-        Table: carts
-        - cart_id (INTEGER, PK)
-        - user_id (INTEGER, FK)
+        - unit_price (NUMERIC)
+        - total_price (NUMERIC)
         - created_at, updated_at (TIMESTAMP)
         
-        Table: cart_items
+        Table: cart
+        - cart_id (INTEGER, PK)
+        - user_id (UUID, FK)
+        - status (cart_status)
+        - total_price (NUMERIC)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: cart_item
         - cart_item_id (INTEGER, PK)
         - cart_id (INTEGER, FK)
-        - product_id (INTEGER, FK)
+        - product_id (UUID, FK)
         - quantity (INTEGER)
-        - price (NUMERIC)
-        - added_at (TIMESTAMP)
-        
-        Table: payments
-        - payment_id (INTEGER, PK)
-        - order_id (INTEGER, FK)
-        - payment_method (TEXT)
-        - payment_status (TEXT)
-        - amount (NUMERIC)
-        - transaction_id (TEXT)
-        - payment_date (TIMESTAMP)
+        - unit_price (NUMERIC)
+        - total_price (NUMERIC)
         - created_at, updated_at (TIMESTAMP)
         
-        Table: shipments
-        - shipment_id (INTEGER, PK)
-        - order_id (INTEGER, FK)
-        - shipment_date (TIMESTAMP)
-        - delivery_date (TIMESTAMP)
-        - tracking_number (TEXT)
-        - carrier (TEXT)
-        - status (TEXT)
+        Table: payment
+        - payment_id (UUID, PK)
+        - order_id (UUID, FK)
+        - amount (NUMERIC)
+        - method (VARCHAR(50))
+        - status (VARCHAR(50))
+        - paid_at (TIMESTAMP)
+        - created_at, updated_at (TIMESTAMP)
+        
+        Table: shipment
+        - shipment_id (UUID, PK)
+        - order_id (UUID, FK)
+        - tracking_number (VARCHAR(255))
+        - status (VARCHAR(50))
+        - shipped_at (TIMESTAMP)
+        - delivered_at (TIMESTAMP)
+        - carrier_id (UUID, FK to user)
         - created_at, updated_at (TIMESTAMP)
         
         Table: inventory
-        - inventory_id (INTEGER, PK)
-        - product_id (INTEGER, FK)
-        - quantity_available (INTEGER)
-        - quantity_reserved (INTEGER)
-        - warehouse_location (TEXT)
-        - last_restocked_at (TIMESTAMP)
-        - created_at, updated_at (TIMESTAMP)
+        - inventory_id (UUID, PK)
+        - product_id (UUID, FK)
+        - warehouse_id (UUID)
+        - quantity (INTEGER)
+        - last_updated (TIMESTAMP)
         
-        Table: product_reviews
-        - review_id (INTEGER, PK)
-        - product_id (INTEGER, FK)
-        - user_id (INTEGER, FK)
+        Table: product_review
+        - product_review_id (UUID, PK)
+        - product_id (UUID, FK)
+        - user_id (UUID, FK)
         - rating (INTEGER, 1-5)
-        - review_text (TEXT)
-        - review_date (TIMESTAMP)
-        - is_verified_purchase (BOOLEAN)
-        - helpful_count (INTEGER)
+        - comment (TEXT)
         - created_at, updated_at (TIMESTAMP)
         
-        Table: coupons
-        - coupon_id (INTEGER, PK)
-        - coupon_code (TEXT)
-        - discount_type (TEXT)
-        - discount_value (NUMERIC)
-        - min_purchase_amount (NUMERIC)
-        - max_discount_amount (NUMERIC)
-        - start_date, end_date (TIMESTAMP)
-        - is_active (BOOLEAN)
-        - usage_limit (INTEGER)
+        Table: coupon
+        - coupon_id (UUID, PK)
+        - code (VARCHAR(100), UNIQUE)
+        - discount_type (VARCHAR(20)) - 'percent' or 'amount'
+        - value (NUMERIC)
+        - amount (NUMERIC)
+        - valid_from (TIMESTAMP)
+        - valid_to (TIMESTAMP)
+        - usage_count (INTEGER)
         - created_at, updated_at (TIMESTAMP)
         
-        Table: events
-        - event_id (INTEGER, PK)
-        - event_type (TEXT)
-        - user_id (INTEGER, FK, nullable)
-        - product_id (INTEGER, FK, nullable)
-        - event_data (JSONB)
-        - event_timestamp (TIMESTAMP)
-        - created_at (TIMESTAMP)
+        Table: event
+        - event_id (UUID, PK)
+        - user_id (UUID, FK, nullable)
+        - session_id (VARCHAR(255))
+        - event_type (VARCHAR(255))
+        - metadata (JSONB)
+        - ts (TIMESTAMP)
+        
+        Table: chat_history
+        - id (INTEGER, PK)
+        - session_id (TEXT)
+        - customer_id (TEXT)
+        - user_message (TEXT)
+        - bot_response (TEXT)
+        - timestamp (TIMESTAMP)
+        - metadata (JSONB)
         """
         
         prompt = f"""
@@ -468,15 +485,17 @@ When users ask who you are or about yourself, introduce yourself as:
         Instructions:
         - You have full access to ALL data in the database (no customer_id restrictions)
         - Use appropriate JOINs to combine data from multiple tables when needed
-        - CRITICAL: When joining users and orders tables, ALWAYS use: users.email = orders.user_id
-          (orders.user_id contains EMAIL addresses, NOT UUID!)
-        - Example correct join: SELECT u.full_name, COUNT(o.order_id) FROM users u JOIN orders o ON u.email = o.user_id
+        - CRITICAL: Tables "user" and "order" are PostgreSQL reserved words - ALWAYS quote them: "user", "order"
+        - CRITICAL: When joining user and order tables, ALWAYS use: "user".email = "order".user_id
+          ("order".user_id contains EMAIL/TEXT, NOT UUID!)
+        - Example correct join: SELECT u.full_name, COUNT(o.order_id) FROM "user" u JOIN "order" o ON u.email = o.user_id
         - Use LIKE or ILIKE for text comparisons (case-insensitive)
         - For aggregations, use GROUP BY, COUNT, SUM, AVG as appropriate
         - Limit results to 10 unless specified otherwise
         - Order results by most relevant columns (e.g., created_at DESC, rating DESC)
         - Return ONLY the SQL query, no markdown, no explanation
         - Make sure column names and table names match the schema exactly
+        - Use singular table names: product, category, "user", "order", payment, shipment, etc.
         
         User Question: {query}
         """
@@ -485,14 +504,14 @@ When users ask who you are or about yourself, introduce yourself as:
             response = self.llm.generate_content(prompt)
             sql = response.text.strip().replace('```sql', '').replace('```', '').strip()
             
-            # CRITICAL FIX: Automatically fix wrong joins between users and orders
+            # CRITICAL FIX: Automatically fix wrong joins between user and order
             # Replace any variations of wrong joins with the correct one
             import re
             
-            # Pattern 1: users.user_id = orders.user_id or similar
+            # Pattern 1: user.user_id = order.user_id or similar
             sql = re.sub(
-                r'users?\.user_id\s*=\s*orders?\.user_id',
-                'users.email = orders.user_id',
+                r'"?user"?\.user_id\s*=\s*"?order"?\.user_id',
+                '"user".email = "order".user_id',
                 sql,
                 flags=re.IGNORECASE
             )
@@ -603,61 +622,61 @@ When users ask who you are or about yourself, introduce yourself as:
                     
                     # Check for customer/user queries
                     if any(word in query_lower for word in ['customer', 'user', 'profile', 'account']):
-                        cur.execute("SELECT * FROM users ORDER BY created_at DESC LIMIT 10")
+                        cur.execute("SELECT * FROM \"user\" ORDER BY created_at DESC LIMIT 10")
                         users = cur.fetchall()
                         context_parts.append(f"Users Data: {users}")
                         
-                        cur.execute("SELECT COUNT(*) as total FROM users")
+                        cur.execute("SELECT COUNT(*) as total FROM \"user\"")
                         count = cur.fetchone()
                         context_parts.append(f"Total Users: {count['total']}")
                     
                     # Check for product queries
                     if any(word in query_lower for word in ['product', 'item', 'inventory', 'stock']):
-                        cur.execute("SELECT * FROM products ORDER BY created_at DESC LIMIT 10")
+                        cur.execute("SELECT * FROM product ORDER BY created_at DESC LIMIT 10")
                         products = cur.fetchall()
                         context_parts.append(f"Products Data: {products}")
                         
-                        cur.execute("SELECT COUNT(*) as total FROM products")
+                        cur.execute("SELECT COUNT(*) as total FROM product")
                         count = cur.fetchone()
                         context_parts.append(f"Total Products: {count['total']}")
                     
                     # Check for order queries
                     if any(word in query_lower for word in ['order', 'purchase', 'transaction']):
-                        cur.execute("SELECT * FROM orders ORDER BY order_date DESC LIMIT 10")
+                        cur.execute("SELECT * FROM \"order\" ORDER BY created_at DESC LIMIT 10")
                         orders = cur.fetchall()
                         context_parts.append(f"Orders Data: {orders}")
                         
-                        cur.execute("SELECT COUNT(*) as total FROM orders")
+                        cur.execute("SELECT COUNT(*) as total FROM \"order\"")
                         count = cur.fetchone()
                         context_parts.append(f"Total Orders: {count['total']}")
                     
                     # Check for payment queries
                     if any(word in query_lower for word in ['payment', 'revenue', 'sales']):
-                        cur.execute("SELECT * FROM payments ORDER BY payment_date DESC LIMIT 10")
+                        cur.execute("SELECT * FROM payment ORDER BY paid_at DESC LIMIT 10")
                         payments = cur.fetchall()
                         context_parts.append(f"Payments Data: {payments}")
                     
                     # Check for shipment queries
                     if any(word in query_lower for word in ['shipment', 'shipping', 'delivery']):
-                        cur.execute("SELECT * FROM shipments ORDER BY shipment_date DESC LIMIT 10")
+                        cur.execute("SELECT * FROM shipment ORDER BY shipped_at DESC LIMIT 10")
                         shipments = cur.fetchall()
                         context_parts.append(f"Shipments Data: {shipments}")
                     
                     # Check for review queries
                     if any(word in query_lower for word in ['review', 'rating', 'feedback']):
-                        cur.execute("SELECT * FROM product_reviews ORDER BY review_date DESC LIMIT 10")
+                        cur.execute("SELECT * FROM product_review ORDER BY created_at DESC LIMIT 10")
                         reviews = cur.fetchall()
                         context_parts.append(f"Reviews Data: {reviews}")
                     
                     # Check for category queries
                     if any(word in query_lower for word in ['category', 'categories']):
-                        cur.execute("SELECT * FROM categories LIMIT 10")
+                        cur.execute("SELECT * FROM category LIMIT 10")
                         categories = cur.fetchall()
                         context_parts.append(f"Categories Data: {categories}")
                     
                     # Check for coupon queries
                     if any(word in query_lower for word in ['coupon', 'discount', 'promo']):
-                        cur.execute("SELECT * FROM coupons WHERE is_active = true LIMIT 10")
+                        cur.execute("SELECT * FROM coupon WHERE valid_to >= CURRENT_TIMESTAMP LIMIT 10")
                         coupons = cur.fetchall()
                         context_parts.append(f"Coupons Data: {coupons}")
                     
@@ -665,9 +684,9 @@ When users ask who you are or about yourself, introduce yourself as:
                     if not context_parts and not is_intro_query:
                         cur.execute("""
                             SELECT 
-                                (SELECT COUNT(*) FROM users) as total_users,
-                                (SELECT COUNT(*) FROM products) as total_products,
-                                (SELECT COUNT(*) FROM orders) as total_orders
+                                (SELECT COUNT(*) FROM \"user\") as total_users,
+                                (SELECT COUNT(*) FROM product) as total_products,
+                                (SELECT COUNT(*) FROM \"order\") as total_orders
                         """)
                         stats = cur.fetchone()
                         context_parts.append(f"Database Statistics: {stats}")
