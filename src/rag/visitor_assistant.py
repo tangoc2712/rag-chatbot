@@ -34,116 +34,84 @@ class VisitorECommerceRAG:
             dbname=self.settings.DB_NAME
         )
     
-    def search_products(self, search_term: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Search products by name or description"""
-        conn = self.get_db_connection()
+    def semantic_search(self, query: str, tables: List[str] = None, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Perform semantic search across specified tables using pgvector
+        For visitors: only products and product_reviews
+        """
+        if not self.settings.GOOGLE_API_KEY:
+            logger.warning("Cannot perform semantic search without GOOGLE_API_KEY")
+            return []
+
+        # Visitors can only access products and reviews
+        allowed_tables = ['products', 'product_review', 'category']
+        tables_to_search = tables if tables else ['products', 'product_review']
+        tables_to_search = [t for t in tables_to_search if t in allowed_tables]
+
         try:
+            # Generate embedding for query
+            result = genai.embed_content(
+                model="models/embedding-001",
+                content=query,
+                task_type="retrieval_query"
+            )
+            query_embedding = result['embedding']
+            
+            conn = self.get_db_connection()
+            results = []
+            
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT product_id, name, description, price, sale_price, 
-                           stock, category_name, colors, sizes, materials, photos, product_url
-                    FROM products
-                    WHERE (name ILIKE %s OR description ILIKE %s) AND is_active = true
-                    ORDER BY featured DESC, created_at DESC
-                    LIMIT %s
-                """, (f'%{search_term}%', f'%{search_term}%', limit))
-                return cur.fetchall()
+                for table in tables_to_search:
+                    try:
+                        if table == 'products':
+                            sql = """
+                                SELECT 'products' as _source_table, 
+                                       product_id, name, description, price, sale_price, 
+                                       stock, category_name, colors, sizes, materials, product_url,
+                                       embedding <=> %s::vector as distance 
+                                FROM products
+                                WHERE embedding IS NOT NULL AND is_active = true
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                        elif table == 'product_review':
+                            sql = """
+                                SELECT 'product_review' as _source_table,
+                                       pr.rating, pr.review_text, pr.created_at, p.name as product_name,
+                                       pr.embedding <=> %s::vector as distance
+                                FROM product_review pr
+                                LEFT JOIN products p ON pr.product_id::text = p.product_id::text
+                                WHERE pr.embedding IS NOT NULL
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                        elif table == 'category':
+                            sql = """
+                                SELECT 'category' as _source_table,
+                                       category_id, name, type,
+                                       embedding <=> %s::vector as distance
+                                FROM category
+                                WHERE embedding IS NOT NULL
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                        else:
+                            continue
+                        
+                        cur.execute(sql, [query_embedding, limit])
+                        table_results = cur.fetchall()
+                        results.extend(table_results)
+                    except Exception as e:
+                        logger.warning(f"Error searching table {table}: {e}")
+                        continue
+            
+            # Sort all results by distance and limit
+            results.sort(key=lambda x: x.get('distance', 999))
+            return results[:limit * 2]
+                
+        except Exception as e:
+            logger.error(f"Error in semantic search: {e}")
+            return []
         finally:
-            conn.close()
-    
-    def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
-        """Get product details by ID"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT product_id, name, description, price, sale_price, 
-                           stock, category_name, colors, sizes, materials, photos, care
-                    FROM products
-                    WHERE product_id = %s AND is_active = true
-                """, (product_id,))
-                return cur.fetchone()
-        finally:
-            conn.close()
-    
-    def get_product_reviews(self, product_id: str) -> List[Dict[str, Any]]:
-        """Get reviews for a specific product"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT pr.rating, pr.review_text, pr.created_at
-                    FROM product_review pr
-                    WHERE pr.product_id = %s
-                    ORDER BY pr.created_at DESC
-                    LIMIT 20
-                """, (product_id,))
-                return cur.fetchall()
-        finally:
-            conn.close()
-    
-    def get_categories(self) -> List[Dict[str, Any]]:
-        """Get all product categories"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM category ORDER BY name")
-                return cur.fetchall()
-        finally:
-            conn.close()
-    
-    def get_featured_products(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get featured products"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT product_id, name, description, price, sale_price, 
-                           stock, category_name, photos, product_url
-                    FROM products
-                    WHERE featured = true AND is_active = true
-                    ORDER BY created_at DESC
-                    LIMIT %s
-                """, (limit,))
-                return cur.fetchall()
-        finally:
-            conn.close()
-    
-    def get_products_by_category(self, category_name: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get products by category"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT product_id, name, description, price, sale_price, stock, category_name, product_url
-                    FROM products
-                    WHERE category_name ILIKE %s AND is_active = true
-                    ORDER BY featured DESC, created_at DESC
-                    LIMIT %s
-                """, (f'%{category_name}%', limit))
-                return cur.fetchall()
-        finally:
-            conn.close()
-    
-    def get_top_rated_products(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get top rated products based on reviews"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT p.product_id, p.name, p.description, p.price, p.sale_price,
-                           p.category_name, AVG(pr.rating) as avg_rating, COUNT(pr.review_id) as review_count
-                    FROM products p
-                    LEFT JOIN product_review pr ON p.product_id::text = pr.product_id::text
-                    WHERE p.is_active = true
-                    GROUP BY p.product_id
-                    HAVING COUNT(pr.review_id) > 0
-                    ORDER BY avg_rating DESC, review_count DESC
-                    LIMIT %s
-                """, (limit,))
-                return cur.fetchall()
-        finally:
-            conn.close()
+            if 'conn' in locals():
+                conn.close()
 
     def generate_llm_response(self, query: str, context: str, is_intro_query: bool = False) -> str:
         """Generate natural language response using Gemini"""
@@ -255,107 +223,62 @@ Respond as an enthusiastic, helpful sales assistant. Be fun, include product lin
         }
         
         try:
-            conn = self.get_db_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                
-                # Handle account-required requests
-                account_keywords = ['my order', 'my orders', 'order status', 'track order', 
-                                   'my account', 'my profile', 'my cart', 'checkout',
-                                   'my purchase', 'order history', 'my payment']
-                if any(word in query_lower for word in account_keywords):
-                    context_parts.append(
-                        "ACCOUNT_REQUIRED: The visitor is asking about account-related features. "
-                        "Politely inform them they need to sign up or log in to access orders, cart, and account features."
-                    )
-                    debug_info['data_accessed'].append('account_required_notice')
-                
-                # Check for product queries
-                if any(word in query_lower for word in ['product', 'item', 'buy', 'price', 'stock', 
-                                                         'available', 'cost', 'how much', 'find', 'search', 'looking for']):
-                    cur.execute("""
-                        SELECT product_id, name, description, price, sale_price, stock, category_name, product_url
-                        FROM products 
-                        WHERE is_active = true
-                        ORDER BY featured DESC, created_at DESC 
-                        LIMIT 10
-                    """)
-                    products = cur.fetchall()
-                    context_parts.append(f"Available Products: {products}")
-                    debug_info['data_accessed'].append('products')
-                    
-                    cur.execute("SELECT COUNT(*) as total FROM products WHERE is_active = true")
-                    count = cur.fetchone()
-                    context_parts.append(f"Total Products Available: {count['total']}")
-                
-                # Check for review queries
-                if any(word in query_lower for word in ['review', 'rating', 'feedback', 'opinion', 
-                                                         'rated', 'stars', 'recommend']):
-                    cur.execute("""
-                        SELECT pr.rating, pr.review_text, pr.created_at, p.name as product_name
-                        FROM product_review pr
-                        JOIN products p ON pr.product_id::text = p.product_id::text
-                        ORDER BY pr.created_at DESC 
-                        LIMIT 10
-                    """)
-                    reviews = cur.fetchall()
-                    context_parts.append(f"Recent Product Reviews: {reviews}")
-                    debug_info['data_accessed'].append('reviews')
-                    
-                    # Also get top rated products
-                    top_rated = self.get_top_rated_products(5)
-                    if top_rated:
-                        context_parts.append(f"Top Rated Products: {top_rated}")
-                
-                # Check for category queries
-                if any(word in query_lower for word in ['category', 'categories', 'type', 'kinds', 'section']):
-                    categories = self.get_categories()
-                    context_parts.append(f"Product Categories: {categories}")
-                    debug_info['data_accessed'].append('categories')
-                
-                # Check for featured/popular products
-                if any(word in query_lower for word in ['featured', 'popular', 'best', 'top', 
-                                                         'recommend', 'suggestion', 'trending', 'hot']):
-                    featured = self.get_featured_products()
-                    context_parts.append(f"Featured Products: {featured}")
-                    debug_info['data_accessed'].append('featured_products')
-                    
-                    top_rated = self.get_top_rated_products(5)
-                    if top_rated:
-                        context_parts.append(f"Top Rated Products: {top_rated}")
-                
-                # Check for sale/discount queries
-                if any(word in query_lower for word in ['sale', 'discount', 'deal', 'offer', 'cheap', 'affordable']):
-                    cur.execute("""
-                        SELECT product_id, name, price, sale_price, category_name
-                        FROM products
-                        WHERE sale_price IS NOT NULL AND sale_price < price AND is_active = true
-                        ORDER BY (price - sale_price) DESC
-                        LIMIT 10
-                    """)
-                    sale_products = cur.fetchall()
-                    if sale_products:
-                        context_parts.append(f"Products on Sale: {sale_products}")
-                    else:
-                        context_parts.append("No products currently on sale.")
-                    debug_info['data_accessed'].append('sale_products')
-                
-                # If no specific context matched, provide general product info
-                if not context_parts and not is_intro_query:
-                    cur.execute("SELECT COUNT(*) as total_products FROM products WHERE is_active = true")
-                    stats = cur.fetchone()
-                    context_parts.append(f"We have {stats['total_products']} products available for you to explore.")
-                    
-                    featured = self.get_featured_products(5)
-                    if featured:
-                        context_parts.append(f"Featured Products: {featured}")
-                    
-                    categories = self.get_categories()
-                    if categories:
-                        context_parts.append(f"Browse by Category: {categories}")
-                    
-                    debug_info['data_accessed'].append('general_browse')
+            # Handle account-required requests
+            account_keywords = ['my order', 'my orders', 'order status', 'track order', 
+                               'my account', 'my profile', 'my cart', 'checkout',
+                               'my purchase', 'order history', 'my payment']
+            if any(word in query_lower for word in account_keywords):
+                context_parts.append(
+                    "ACCOUNT_REQUIRED: The visitor is asking about account-related features. "
+                    "Politely inform them they need to sign up or log in to access orders, cart, and account features."
+                )
+                debug_info['data_accessed'].append('account_required_notice')
             
-            conn.close()
+            # Determine which tables to search based on query
+            tables_to_search = []
+            
+            if any(word in query_lower for word in ['review', 'rating', 'feedback', 'opinion', 
+                                                     'rated', 'stars', 'recommend']):
+                tables_to_search.append('product_review')
+                debug_info['data_accessed'].append('reviews')
+            
+            if any(word in query_lower for word in ['category', 'categories', 'type', 'kinds', 'section']):
+                tables_to_search.append('category')
+                debug_info['data_accessed'].append('categories')
+            
+            # Default to products for most queries
+            if any(word in query_lower for word in ['product', 'item', 'buy', 'price', 'stock', 
+                                                     'available', 'cost', 'how much', 'find', 'search', 
+                                                     'looking for', 'featured', 'popular', 'best', 'top',
+                                                     'recommend', 'suggestion', 'trending', 'hot',
+                                                     'sale', 'discount', 'deal', 'offer', 'cheap', 'affordable']):
+                tables_to_search.append('products')
+                debug_info['data_accessed'].append('products')
+            
+            # If no specific table matched, search products by default (unless intro query)
+            if not tables_to_search and not is_intro_query:
+                tables_to_search = ['products', 'product_review']
+                debug_info['data_accessed'].append('general_search')
+            
+            # Perform semantic search
+            if tables_to_search:
+                search_results = self.semantic_search(query, tables_to_search, limit=8)
+                if search_results:
+                    context_parts.append(f"Relevant Results: {search_results}")
+                    debug_info['search_results_count'] = len(search_results)
+            
+            # Add general stats if needed
+            if not context_parts and not is_intro_query:
+                conn = self.get_db_connection()
+                try:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("SELECT COUNT(*) as total_products FROM products WHERE is_active = true")
+                        stats = cur.fetchone()
+                        context_parts.append(f"We have {stats['total_products']} products available for you to explore.")
+                finally:
+                    conn.close()
+                debug_info['data_accessed'].append('general_stats')
+        
         except Exception as e:
             logger.error(f"Error fetching database context: {e}")
             context_parts.append("I encountered an issue retrieving product information. Please try again.")

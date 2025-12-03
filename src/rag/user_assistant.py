@@ -34,127 +34,111 @@ class UserECommerceRAG:
             dbname=self.settings.DB_NAME
         )
     
-    def get_user_orders(self, user_id: str) -> List[Dict[str, Any]]:
-        """Get orders for the current user only"""
-        conn = self.get_db_connection()
+    def semantic_search(self, query: str, tables: List[str] = None, user_id: str = None, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Perform semantic search across specified tables using pgvector
+        For users: products, product_reviews, categories, and user's own orders
+        """
+        if not self.settings.GOOGLE_API_KEY:
+            logger.warning("Cannot perform semantic search without GOOGLE_API_KEY")
+            return []
+
+        # Users can access products, reviews, categories, and their own orders
+        allowed_tables = ['products', 'product_review', 'category', 'orders', 'shipments']
+        tables_to_search = tables if tables else ['products', 'product_review']
+        tables_to_search = [t for t in tables_to_search if t in allowed_tables]
+
         try:
+            # Generate embedding for query
+            result = genai.embed_content(
+                model="models/embedding-001",
+                content=query,
+                task_type="retrieval_query"
+            )
+            query_embedding = result['embedding']
+            
+            conn = self.get_db_connection()
+            results = []
+            
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT o.order_id, o.status, o.order_total, o.currency, 
-                           o.created_at, o.subtotal, o.tax, o.shipping_charges, o.discount
-                    FROM orders o
-                    WHERE o.user_id = %s
-                    ORDER BY o.created_at DESC
-                    LIMIT 20
-                """, (user_id,))
-                return cur.fetchall()
-        finally:
-            conn.close()
-    
-    def get_user_order_details(self, user_id: str, order_id: str) -> Optional[Dict[str, Any]]:
-        """Get specific order with items for user - ensures user can only see their own orders"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Get order details
-                cur.execute("""
-                    SELECT o.order_id, o.status, o.order_total, o.currency, 
-                           o.created_at, o.subtotal, o.tax, o.shipping_charges, 
-                           o.discount, o.shipping_info
-                    FROM orders o
-                    WHERE o.order_id = %s AND o.user_id = %s
-                """, (order_id, user_id))
-                order = cur.fetchone()
+                for table in tables_to_search:
+                    try:
+                        if table == 'products':
+                            sql = """
+                                SELECT 'products' as _source_table, 
+                                       product_id, name, description, price, sale_price, 
+                                       stock, category_name, colors, sizes, materials, product_url,
+                                       embedding <=> %s::vector as distance 
+                                FROM products
+                                WHERE embedding IS NOT NULL AND is_active = true
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                            cur.execute(sql, [query_embedding, limit])
+                        elif table == 'product_review':
+                            sql = """
+                                SELECT 'product_review' as _source_table,
+                                       pr.rating, pr.review_text, pr.created_at, p.name as product_name,
+                                       pr.embedding <=> %s::vector as distance
+                                FROM product_review pr
+                                LEFT JOIN products p ON pr.product_id::text = p.product_id::text
+                                WHERE pr.embedding IS NOT NULL
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                            cur.execute(sql, [query_embedding, limit])
+                        elif table == 'category':
+                            sql = """
+                                SELECT 'category' as _source_table,
+                                       category_id, name, type,
+                                       embedding <=> %s::vector as distance
+                                FROM category
+                                WHERE embedding IS NOT NULL
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                            cur.execute(sql, [query_embedding, limit])
+                        elif table == 'orders' and user_id:
+                            # Only fetch user's own orders
+                            sql = """
+                                SELECT 'orders' as _source_table,
+                                       o.order_id, o.status, o.order_total, o.currency, 
+                                       o.created_at, o.subtotal, o.tax, o.shipping_charges, o.discount,
+                                       o.embedding <=> %s::vector as distance
+                                FROM orders o
+                                WHERE o.user_id = %s AND o.embedding IS NOT NULL
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                            cur.execute(sql, [query_embedding, user_id, limit])
+                        elif table == 'shipments' and user_id:
+                            # Only fetch shipments for user's orders
+                            sql = """
+                                SELECT 'shipments' as _source_table,
+                                       s.tracking_number, s.carrier, s.status, s.shipped_at, s.delivered_at,
+                                       o.order_id,
+                                       s.embedding <=> %s::vector as distance
+                                FROM shipments s
+                                JOIN orders o ON s.order_id = o.order_id
+                                WHERE o.user_id = %s AND s.embedding IS NOT NULL
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                            cur.execute(sql, [query_embedding, user_id, limit])
+                        else:
+                            continue
+                        
+                        table_results = cur.fetchall()
+                        results.extend(table_results)
+                    except Exception as e:
+                        logger.warning(f"Error searching table {table}: {e}")
+                        continue
+            
+            # Sort all results by distance and limit
+            results.sort(key=lambda x: x.get('distance', 999))
+            return results[:limit * 2]
                 
-                if order:
-                    # Get order items
-                    cur.execute("""
-                        SELECT oi.quantity, oi.unit_price, oi.total_price, p.name as product_name
-                        FROM order_items oi
-                        LEFT JOIN products p ON oi.product_id = p.product_id
-                        WHERE oi.order_id = %s
-                    """, (order_id,))
-                    items = cur.fetchall()
-                    order['items'] = items
-                
-                return order
+        except Exception as e:
+            logger.error(f"Error in semantic search: {e}")
+            return []
         finally:
-            conn.close()
-    
-    def get_user_order_shipment(self, user_id: str, order_id: str) -> Optional[Dict[str, Any]]:
-        """Get shipment info for user's order"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT s.tracking_number, s.carrier, s.status, s.shipped_at, s.delivered_at
-                    FROM shipments s
-                    JOIN orders o ON s.order_id = o.order_id
-                    WHERE o.order_id = %s AND o.user_id = %s
-                """, (order_id, user_id))
-                return cur.fetchone()
-        finally:
-            conn.close()
-    
-    def search_products(self, search_term: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Search products by name or description"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT product_id, name, description, price, sale_price, 
-                           stock, category_name, colors, sizes, materials, product_url
-                    FROM products
-                    WHERE (name ILIKE %s OR description ILIKE %s) AND is_active = true
-                    ORDER BY featured DESC, created_at DESC
-                    LIMIT %s
-                """, (f'%{search_term}%', f'%{search_term}%', limit))
-                return cur.fetchall()
-        finally:
-            conn.close()
-    
-    def get_product_reviews(self, product_id: str) -> List[Dict[str, Any]]:
-        """Get reviews for a specific product"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT pr.rating, pr.review_text, pr.created_at
-                    FROM product_review pr
-                    WHERE pr.product_id = %s
-                    ORDER BY pr.created_at DESC
-                    LIMIT 20
-                """, (product_id,))
-                return cur.fetchall()
-        finally:
-            conn.close()
-    
-    def get_categories(self) -> List[Dict[str, Any]]:
-        """Get all product categories"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM category ORDER BY name")
-                return cur.fetchall()
-        finally:
-            conn.close()
-    
-    def get_featured_products(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get featured products"""
-        conn = self.get_db_connection()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT product_id, name, description, price, sale_price, 
-                           stock, category_name, photos, product_url
-                    FROM products
-                    WHERE featured = true AND is_active = true
-                    ORDER BY created_at DESC
-                    LIMIT %s
-                """, (limit,))
-                return cur.fetchall()
-        finally:
-            conn.close()
+            if 'conn' in locals():
+                conn.close()
 
     def generate_llm_response(self, query: str, context: str, is_intro_query: bool = False) -> str:
         """Generate natural language response using Gemini"""
@@ -244,8 +228,6 @@ Context from database:
 Customer's Question: {query}
 
 Respond as their favorite, enthusiastic sales assistant. Be fun, personal, include product links when relevant, and always end with an engaging follow-up question:
-
-Provide a helpful, personalized response:
 """
         
         try:
@@ -285,94 +267,77 @@ Provide a helpful, personalized response:
         }
         
         try:
-            conn = self.get_db_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                
-                # Check for user's own order queries
-                if user_id and any(word in query_lower for word in ['my order', 'my orders', 'order status', 
-                                                                      'track order', 'my purchase', 'order history',
-                                                                      'where is my', 'delivery', 'shipping']):
-                    orders = self.get_user_orders(user_id)
-                    if orders:
-                        context_parts.append(f"Your Orders: {orders}")
-                        debug_info['data_accessed'].append('user_orders')
-                        
-                        # Get shipment info for recent orders
-                        for order in orders[:3]:  # Check first 3 orders for shipment
-                            shipment = self.get_user_order_shipment(user_id, str(order['order_id']))
-                            if shipment:
-                                context_parts.append(f"Shipment for Order {order['order_id']}: {shipment}")
-                    else:
-                        context_parts.append("You don't have any orders yet. Start shopping to place your first order!")
-                
-                # Handle admin-only requests
-                admin_keywords = ['all orders', 'all users', 'all customers', 'revenue report', 
-                                 'sales report', 'admin', 'dashboard', 'analytics', 'total revenue']
-                if any(word in query_lower for word in admin_keywords):
-                    context_parts.append(
-                        "ADMIN_ONLY: The user is asking about admin-level features. "
-                        "Politely explain that you can only help with their personal orders and product browsing. "
-                        "Suggest contacting support for admin-level inquiries."
-                    )
-                    debug_info['data_accessed'].append('admin_only_notice')
-                
-                # Check for product queries
-                if any(word in query_lower for word in ['product', 'item', 'buy', 'price', 'stock', 
-                                                         'available', 'find', 'search', 'looking for']):
-                    cur.execute("""
-                        SELECT product_id, name, description, price, sale_price, stock, category_name, product_url
-                        FROM products 
-                        WHERE is_active = true
-                        ORDER BY featured DESC, created_at DESC 
-                        LIMIT 10
-                    """)
-                    products = cur.fetchall()
-                    context_parts.append(f"Products: {products}")
-                    debug_info['data_accessed'].append('products')
-                
-                # Check for review queries
-                if any(word in query_lower for word in ['review', 'rating', 'feedback', 'opinion']):
-                    cur.execute("""
-                        SELECT pr.rating, pr.review_text, pr.created_at, p.name as product_name
-                        FROM product_review pr
-                        JOIN products p ON pr.product_id::text = p.product_id::text
-                        ORDER BY pr.created_at DESC 
-                        LIMIT 10
-                    """)
-                    reviews = cur.fetchall()
-                    context_parts.append(f"Recent Reviews: {reviews}")
-                    debug_info['data_accessed'].append('reviews')
-                
-                # Check for category queries
-                if any(word in query_lower for word in ['category', 'categories', 'type', 'kinds']):
-                    categories = self.get_categories()
-                    context_parts.append(f"Categories: {categories}")
-                    debug_info['data_accessed'].append('categories')
-                
-                # Check for featured/popular products
-                if any(word in query_lower for word in ['featured', 'popular', 'best', 'recommend', 'suggestion']):
-                    featured = self.get_featured_products()
-                    context_parts.append(f"Featured Products: {featured}")
-                    debug_info['data_accessed'].append('featured_products')
-                
-                # If no specific context matched, provide helpful info
-                if not context_parts and not is_intro_query:
-                    if user_id:
-                        # Show user's recent orders and featured products
-                        orders = self.get_user_orders(user_id)
-                        if orders:
-                            context_parts.append(f"Your Recent Orders: {orders[:5]}")
-                        
-                    featured = self.get_featured_products(5)
-                    if featured:
-                        context_parts.append(f"Featured Products: {featured}")
-                    
-                    cur.execute("SELECT COUNT(*) as total_products FROM products WHERE is_active = true")
-                    stats = cur.fetchone()
-                    context_parts.append(f"We have {stats['total_products']} products available.")
-                    debug_info['data_accessed'].append('general_stats')
+            # Handle admin-only requests
+            admin_keywords = ['all orders', 'all users', 'all customers', 'revenue report', 
+                             'sales report', 'admin', 'dashboard', 'analytics', 'total revenue']
+            if any(word in query_lower for word in admin_keywords):
+                context_parts.append(
+                    "ADMIN_ONLY: The user is asking about admin-level features. "
+                    "Politely explain that you can only help with their personal orders and product browsing. "
+                    "Suggest contacting support for admin-level inquiries."
+                )
+                debug_info['data_accessed'].append('admin_only_notice')
             
-            conn.close()
+            # Determine which tables to search based on query
+            tables_to_search = []
+            
+            # Check for user's own order queries
+            if user_id and any(word in query_lower for word in ['my order', 'my orders', 'order status', 
+                                                                  'track order', 'my purchase', 'order history',
+                                                                  'where is my', 'delivery', 'shipping']):
+                tables_to_search.append('orders')
+                tables_to_search.append('shipments')
+                debug_info['data_accessed'].append('user_orders')
+                debug_info['data_accessed'].append('user_shipments')
+            
+            # Check for review queries
+            if any(word in query_lower for word in ['review', 'rating', 'feedback', 'opinion']):
+                tables_to_search.append('product_review')
+                debug_info['data_accessed'].append('reviews')
+            
+            # Check for category queries
+            if any(word in query_lower for word in ['category', 'categories', 'type', 'kinds']):
+                tables_to_search.append('category')
+                debug_info['data_accessed'].append('categories')
+            
+            # Check for product queries
+            if any(word in query_lower for word in ['product', 'item', 'buy', 'price', 'stock', 
+                                                     'available', 'find', 'search', 'looking for',
+                                                     'featured', 'popular', 'best', 'recommend', 'suggestion']):
+                tables_to_search.append('products')
+                debug_info['data_accessed'].append('products')
+            
+            # If no specific table matched, search products by default (unless intro query)
+            if not tables_to_search and not is_intro_query:
+                tables_to_search = ['products', 'product_review']
+                if user_id:
+                    tables_to_search.append('orders')
+                debug_info['data_accessed'].append('general_search')
+            
+            # Perform semantic search
+            if tables_to_search:
+                search_results = self.semantic_search(query, tables_to_search, user_id=user_id, limit=8)
+                if search_results:
+                    context_parts.append(f"Relevant Results: {search_results}")
+                    debug_info['search_results_count'] = len(search_results)
+            
+            # Add general stats if needed
+            if not context_parts and not is_intro_query:
+                conn = self.get_db_connection()
+                try:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("SELECT COUNT(*) as total_products FROM products WHERE is_active = true")
+                        stats = cur.fetchone()
+                        context_parts.append(f"We have {stats['total_products']} products available.")
+                        
+                        if user_id:
+                            cur.execute("SELECT COUNT(*) as order_count FROM orders WHERE user_id = %s", (user_id,))
+                            order_stats = cur.fetchone()
+                            context_parts.append(f"You have {order_stats['order_count']} orders in your history.")
+                finally:
+                    conn.close()
+                debug_info['data_accessed'].append('general_stats')
+        
         except Exception as e:
             logger.error(f"Error fetching database context: {e}")
             context_parts.append("I encountered an issue retrieving information. Please try again.")

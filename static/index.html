@@ -3,57 +3,195 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>E-Commerce Chatbot</title>
+    <title>E-Commerce Chatbot - Select Role</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        .landing-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .landing-title {
+            font-size: 48px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        
+        .landing-subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            margin-bottom: 60px;
+            text-align: center;
+        }
+        
+        .role-cards {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 1200px;
+        }
+        
+        .role-card {
+            background: var(--chat-bg);
+            border-radius: 16px;
+            padding: 40px 30px;
+            width: 320px;
+            text-align: center;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+        }
+        
+        .role-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        
+        .role-card.visitor {
+            border-color: #667eea;
+        }
+        .role-card.visitor:hover {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%);
+        }
+        
+        .role-card.user {
+            border-color: #11998e;
+        }
+        .role-card.user:hover {
+            background: linear-gradient(135deg, rgba(17, 153, 142, 0.2) 0%, rgba(56, 239, 125, 0.2) 100%);
+        }
+        
+        .role-card.admin {
+            border-color: #eb3349;
+        }
+        .role-card.admin:hover {
+            background: linear-gradient(135deg, rgba(235, 51, 73, 0.2) 0%, rgba(244, 92, 67, 0.2) 100%);
+        }
+        
+        .role-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        
+        .role-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        
+        .role-description {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        
+        .role-access {
+            background: var(--input-bg);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: left;
+            font-size: 12px;
+        }
+        
+        .role-access .access-yes {
+            color: #38ef7d;
+        }
+        
+        .role-access .access-no {
+            color: #f45c43;
+        }
+        
+        .role-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 20px;
+        }
+        
+        .role-card.visitor .role-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .role-card.user .role-badge {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        
+        .role-card.admin .role-badge {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+
+        .api-docs-link {
+            margin-top: 60px;
+            padding: 16px 32px;
+            background: var(--input-bg);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.2s;
+            border: 1px solid var(--border-color);
+        }
+        
+        .api-docs-link:hover {
+            background: var(--chat-bg);
+            color: var(--text-primary);
+        }
+    </style>
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <h1>Admin Database Assistant</h1>
-            <div class="header-info">
-                <button id="clear-chat-btn" class="clear-btn">Clear conversation</button>
-            </div>
-        </div>
+    <div class="landing-container">
+        <h1 class="landing-title">🛍️ E-Commerce RAG Chatbot</h1>
+        <p class="landing-subtitle">Select a role to test the chatbot with different access levels</p>
         
-        <div class="chat-messages" id="chat-messages">
-            <div class="welcome-message">
-                <h2>👋 Welcome, Admin</h2>
-                <p>I have full access to your database. Ask me anything about your e-commerce data!</p>
-                <div class="example-queries">
-                    <p><strong>Try asking:</strong></p>
-                    <ul>
-                        <li>"Show me the top 5 selling products"</li>
-                        <li>"How many pending orders do we have?"</li>
-                        <li>"List recent customer reviews"</li>
-                        <li>"What's our total revenue this month?"</li>
-                    </ul>
+        <div class="role-cards">
+            <!-- Visitor Card -->
+            <a href="visitor.html" class="role-card visitor">
+                <div class="role-icon">👁️</div>
+                <h2 class="role-title">Visitor</h2>
+                <p class="role-description">Browse as a guest without logging in. Perfect for testing the public shopping experience.</p>
+                <div class="role-access">
+                    <p class="access-yes">✅ Products, Reviews, Categories</p>
+                    <p class="access-no">❌ Orders, Cart, Account</p>
                 </div>
-            </div>
+                <span class="role-badge">Try as Visitor →</span>
+            </a>
+            
+            <!-- User Card -->
+            <a href="user.html" class="role-card user">
+                <div class="role-icon">👤</div>
+                <h2 class="role-title">User</h2>
+                <p class="role-description">Logged-in customer experience. Track orders, view shipments, and get personalized help.</p>
+                <div class="role-access">
+                    <p class="access-yes">✅ Own Orders, Shipments, Products</p>
+                    <p class="access-no">❌ Other Users, Admin Analytics</p>
+                </div>
+                <span class="role-badge">Try as User →</span>
+            </a>
+            
+            <!-- Admin Card -->
+            <a href="admin.html" class="role-card admin">
+                <div class="role-icon">👑</div>
+                <h2 class="role-title">Admin</h2>
+                <p class="role-description">Full database access. Query all orders, users, inventory, analytics, and more.</p>
+                <div class="role-access">
+                    <p class="access-yes">✅ Everything: Orders, Users, Payments</p>
+                    <p class="access-yes">✅ Inventory, Coupons, Analytics</p>
+                </div>
+                <span class="role-badge">Try as Admin →</span>
+            </a>
         </div>
         
-        <div class="chat-input-container">
-            <div class="typing-indicator" id="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-            <form id="chat-form">
-                <input 
-                    type="text" 
-                    id="message-input" 
-                    placeholder="Message E-Commerce Assistant" 
-                    autocomplete="off"
-                    required
-                >
-                <button type="submit" id="send-btn">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </button>
-            </form>
-        </div>
+        <a href="/docs" class="api-docs-link">📚 View API Documentation (Swagger)</a>
     </div>
-
-    <script src="chat.js"></script>
 </body>
 </html>
