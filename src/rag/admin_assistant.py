@@ -43,8 +43,8 @@ class ECommerceRAG:
             return []
 
         # All tables available to admin
-        all_tables = ['products', 'users', 'orders', 'product_review', 'category', 
-                      'carts', 'cart_items', 'payments', 'shipments', 'inventory', 'coupons', 'events']
+        all_tables = ['product', 'user', 'order', 'product_review', 'category', 
+                      'cart', 'cart_item', 'payment', 'shipment', 'inventory', 'coupon', 'event']
         
         # Determine which tables to search
         if tables:
@@ -55,31 +55,31 @@ class ECommerceRAG:
             tables_to_search = []
             
             if any(word in query_lower for word in ['product', 'item', 'buy', 'purchase', 'price', 'rating']):
-                tables_to_search.append('products')
+                tables_to_search.append('product')
             if any(word in query_lower for word in ['user', 'customer', 'profile', 'account']):
-                tables_to_search.append('users')
+                tables_to_search.append('user')
             if any(word in query_lower for word in ['order', 'purchase history', 'bought']):
-                tables_to_search.append('orders')
+                tables_to_search.append('order')
             if any(word in query_lower for word in ['review', 'comment', 'feedback', 'rating']):
                 tables_to_search.append('product_review')
             if any(word in query_lower for word in ['cart', 'shopping cart']):
-                tables_to_search.extend(['carts', 'cart_items'])
+                tables_to_search.extend(['cart', 'cart_item'])
             if any(word in query_lower for word in ['payment', 'transaction', 'paid']):
-                tables_to_search.append('payments')
+                tables_to_search.append('payment')
             if any(word in query_lower for word in ['shipment', 'shipping', 'delivery', 'ship']):
-                tables_to_search.append('shipments')
+                tables_to_search.append('shipment')
             if any(word in query_lower for word in ['inventory', 'stock', 'available']):
                 tables_to_search.append('inventory')
             if any(word in query_lower for word in ['coupon', 'discount', 'promo']):
-                tables_to_search.append('coupons')
+                tables_to_search.append('coupon')
             if any(word in query_lower for word in ['event', 'activity']):
-                tables_to_search.append('events')
+                tables_to_search.append('event')
             if any(word in query_lower for word in ['category', 'categories']):
                 tables_to_search.append('category')
             
             # Default to products if no match
             if not tables_to_search:
-                tables_to_search = ['products']
+                tables_to_search = ['product']
 
         try:
             # Generate embedding for query
@@ -97,70 +97,71 @@ class ECommerceRAG:
                 for table in tables_to_search:
                     try:
                         # Build table-specific query
-                        if table == 'products':
+                        if table == 'product':
                             sql = """
-                                SELECT 'products' as _source_table, 
+                                SELECT 'product' as _source_table, 
                                        product_id, name, description, price, sale_price, 
                                        stock, category_name, colors, sizes, materials, product_url,
                                        embedding <=> %s::vector as distance 
-                                FROM products
+                                FROM product
                                 WHERE embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
-                        elif table == 'users':
+                        elif table == 'user':
                             sql = """
-                                SELECT 'users' as _source_table,
-                                       user_id, full_name, email, phone, address, job, gender, role,
+                                SELECT 'user' as _source_table,
+                                       user_id, full_name, email, phone, address, job, gender, role, city, country,
                                        embedding <=> %s::vector as distance
                                 FROM "user"
                                 WHERE embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
-                        elif table == 'orders':
+                        elif table == 'order':
                             sql = """
-                                SELECT 'orders' as _source_table,
+                                SELECT 'order' as _source_table,
                                        order_id, user_id, status, order_total, currency, 
                                        subtotal, tax, shipping_charges, discount, created_at,
                                        embedding <=> %s::vector as distance
-                                FROM orders
+                                FROM "order"
                                 WHERE embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
                         elif table == 'product_review':
                             sql = """
                                 SELECT 'product_review' as _source_table,
-                                       pr.rating, pr.review_text, pr.created_at, p.name as product_name,
+                                       pr.product_review_id, pr.rating, pr.comment, pr.created_at, 
+                                       p.name as product_name,
                                        pr.embedding <=> %s::vector as distance
                                 FROM product_review pr
-                                LEFT JOIN products p ON pr.product_id::text = p.product_id::text
+                                LEFT JOIN product p ON pr.product_id = p.product_id
                                 WHERE pr.embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
-                        elif table == 'payments':
+                        elif table == 'payment':
                             sql = """
-                                SELECT 'payments' as _source_table,
+                                SELECT 'payment' as _source_table,
                                        payment_id, order_id, amount, method, status, paid_at,
                                        embedding <=> %s::vector as distance
-                                FROM payments
+                                FROM payment
                                 WHERE embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
-                        elif table == 'shipments':
+                        elif table == 'shipment':
                             sql = """
-                                SELECT 'shipments' as _source_table,
-                                       shipment_id, order_id, tracking_number, carrier, status, 
+                                SELECT 'shipment' as _source_table,
+                                       shipment_id, order_id, tracking_number, status, 
                                        shipped_at, delivered_at,
                                        embedding <=> %s::vector as distance
-                                FROM shipments
+                                FROM shipment
                                 WHERE embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
-                        elif table == 'coupons':
+                        elif table == 'coupon':
                             sql = """
-                                SELECT 'coupons' as _source_table,
+                                SELECT 'coupon' as _source_table,
                                        coupon_id, code, discount_type, value, valid_from, valid_to, usage_count,
                                        embedding <=> %s::vector as distance
-                                FROM coupons
+                                FROM coupon
                                 WHERE embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
@@ -171,7 +172,7 @@ class ECommerceRAG:
                                        p.name as product_name,
                                        i.embedding <=> %s::vector as distance
                                 FROM inventory i
-                                LEFT JOIN products p ON i.product_id = p.product_id
+                                LEFT JOIN product p ON i.product_id = p.product_id
                                 WHERE i.embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
@@ -184,32 +185,32 @@ class ECommerceRAG:
                                 WHERE embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
-                        elif table == 'carts':
+                        elif table == 'cart':
                             sql = """
-                                SELECT 'carts' as _source_table,
+                                SELECT 'cart' as _source_table,
                                        cart_id, user_id, status, total_price, created_at,
                                        embedding <=> %s::vector as distance
-                                FROM carts
+                                FROM cart
                                 WHERE embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
-                        elif table == 'cart_items':
+                        elif table == 'cart_item':
                             sql = """
-                                SELECT 'cart_items' as _source_table,
+                                SELECT 'cart_item' as _source_table,
                                        ci.cart_item_id, ci.cart_id, ci.quantity, ci.unit_price, ci.total_price,
                                        p.name as product_name,
                                        ci.embedding <=> %s::vector as distance
-                                FROM cart_items ci
-                                LEFT JOIN products p ON ci.product_id = p.product_id
+                                FROM cart_item ci
+                                LEFT JOIN product p ON ci.product_id = p.product_id
                                 WHERE ci.embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
-                        elif table == 'events':
+                        elif table == 'event':
                             sql = """
-                                SELECT 'events' as _source_table,
+                                SELECT 'event' as _source_table,
                                        event_id, user_id, event_type, session_id, ts,
                                        embedding <=> %s::vector as distance
-                                FROM events
+                                FROM event
                                 WHERE embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
@@ -243,79 +244,79 @@ class ECommerceRAG:
         intro_message = ""
         if is_intro_query:
             intro_message = """
-When users ask who you are or about yourself, introduce yourself in a friendly, approachable way:
-"Hi! I'm your AI shopping assistant! 👋 I'm here to help you find products, track your orders, check reviews, and answer any questions about our store. Feel free to ask me anything!"
+When users ask who you are, give a brief introduction:
+"I'm the Admin Analytics Assistant. I provide accurate data on orders, users, products, payments, shipments, inventory, and all business metrics. What data do you need?"
 """
         
         prompt = f"""
-You are a friendly and helpful AI shopping assistant for an e-commerce platform. You help customers in a warm, conversational way.
+You are a DATA ANALYST ASSISTANT for e-commerce administrators. Provide accurate, complete, and direct answers.
 
-YOUR PERSONALITY:
-- Speak like a friendly store assistant, not a technical database admin
-- Use simple, everyday language that anyone can understand
-- Be enthusiastic and helpful, like you're chatting with a friend
-- Show empathy and understanding of customer needs
-- Make shopping easy and enjoyable
+YOUR ROLE:
+- Provide precise data and statistics
+- Answer questions directly without unnecessary advice or suggestions
+- Focus on numbers, facts, and completeness
+- Be professional and concise
 
-WHAT YOU CAN HELP WITH:
-- Products: Find items, check prices, stock availability, categories, colors, sizes, materials
-- Orders: Track order status, view order history, check order totals and details
-- Shopping: Check cart items, find active carts, review cart totals
-- Payments: View payment status, methods, transaction amounts
-- Shipping: Track shipments, check delivery status, view tracking numbers
-- Reviews: Read product reviews, see ratings and customer feedback
-- Discounts: Find active coupons, check discount codes and amounts
-- Account: View user profiles, contact info, order history
-- Inventory: Check product stock levels and availability
+DATA YOU CAN ACCESS:
+- Orders: counts, totals, status, history, items
+- Users/Customers: counts, profiles, activity
+- Products: inventory, prices, categories, stock levels
+- Payments: amounts, status, methods, totals
+- Shipments: status, tracking, delivery info
+- Reviews: ratings, counts, averages
+- Coupons: codes, discounts, usage
+- Carts: items, totals, abandoned carts
+- Inventory: stock levels, availability
 
 {intro_message}
 
 HOW TO RESPOND:
-- Start with a friendly acknowledgment of their question
-- Present information clearly and conversationally
-- Use natural language, not technical jargon or database terms
-- When showing lists, use friendly descriptions
-- Add helpful context or suggestions when relevant
-- Connect related information (e.g., "This order includes 3 items..." or "The customer also reviewed...")
-- End with an offer to help further if appropriate
+1. **Answer directly** - Start with the exact data requested
+2. **Be complete** - Include all relevant numbers and details
+3. **Be accurate** - Double-check calculations and totals
+4. **No advice** - Don't give business suggestions unless asked
+5. **No small talk** - Skip greetings and pleasantries
+6. **Structured format** - Use tables or lists for multiple items
 
-FORMATTING GUIDELINES:
-- Use **bold** for important info like product names, prices, order IDs, or status
-- Use emojis sparingly to add warmth:
-  💰 for money/prices
-  ⭐ for ratings
-  📦 for orders/shipments
-  🛒 for cart/shopping
-  ✅ for completed/delivered status
-  ⏳ for pending/processing
-  🎁 for discounts/coupons
-- Number items clearly: "Here are your top 5 orders:", then "1. **Order #abc123** - $300.00 💰"
-- Keep it readable and scannable
-- Break long responses into easy-to-read paragraphs
-- Use line breaks between different items for clarity
+FORMATTING:
+- Use **bold** for key numbers and important values
+- Use tables for comparing data when appropriate
+- Use bullet points for lists
+- Show currency with proper formatting: **$1,234.56**
+- Show percentages clearly: **45.2%**
+- For counts: **Total: 150 orders**
+- Keep responses focused and scannable
 
-CONNECTING THE DOTS:
-- When showing orders, mention related products if available
-- When showing products, mention if they're in stock or popular
-- When showing users, you can mention their order count or recent activity
-- Link payments to their orders
-- Connect shipments to orders and delivery addresses
-- Show reviews with product context
+EXAMPLE RESPONSES:
 
-IMPORTANT: 
-- Never mention "database", "SQL", "tables", "user_id", "product_id", or technical terms
-- Don't show raw UUIDs unless specifically asked for order/product references
-- Use friendly names: "Order #abc123" instead of showing full UUID
-- Speak like you're helping a customer in person at a store
-- Focus on what the customer wants to know, not how you got the data
-- Make the information feel personal and relevant
+Q: "How many orders this month?"
+A: "**Total Orders (This Month): 245**
+- Completed: 180
+- Processing: 45
+- Pending: 20
+**Total Revenue: $34,567.89**"
 
-User Question: {query}
+Q: "Top selling products?"
+A: "**Top 5 Products by Sales:**
+1. Product A - 156 units ($4,680)
+2. Product B - 134 units ($2,680)
+3. Product C - 98 units ($1,960)
+4. Product D - 87 units ($2,610)
+5. Product E - 76 units ($1,520)"
+
+IMPORTANT:
+- Never use emojis
+- Don't add motivational comments or suggestions
+- Don't say "Great question!" or similar phrases
+- Present data cleanly without commentary
+- If data is incomplete or unavailable, state it clearly
+
+Admin Question: {query}
 
 Retrieved Data:
 {context}
 
-Respond in a friendly, conversational way that helps the customer understand their shopping information:
+Provide a direct, accurate, and complete answer:
 """
         
         try:
@@ -401,18 +402,18 @@ Respond in a friendly, conversational way that helps the customer understand the
             
             # Check for cart queries
             if any(word in query_lower for word in ['cart', 'shopping cart']):
-                tables_to_search.append('carts')
-                tables_to_search.append('cart_items')
+                tables_to_search.append('cart')
+                tables_to_search.append('cart_item')
                 debug_info['data_accessed'].append('carts')
             
             # Check for event/activity queries
             if any(word in query_lower for word in ['event', 'activity', 'action']):
-                tables_to_search.append('events')
+                tables_to_search.append('event')
                 debug_info['data_accessed'].append('events')
             
             # If no specific table matched, search main tables (unless intro query)
             if not tables_to_search and not is_intro_query:
-                tables_to_search = ['products', 'orders', 'users']
+                tables_to_search = ['product', 'order', 'user']
                 debug_info['data_accessed'].append('general_search')
             
             # Perform semantic search
@@ -430,8 +431,8 @@ Respond in a friendly, conversational way that helps the customer understand the
                         cur.execute("""
                             SELECT 
                                 (SELECT COUNT(*) FROM "user") as total_users,
-                                (SELECT COUNT(*) FROM products) as total_products,
-                                (SELECT COUNT(*) FROM orders) as total_orders
+                                (SELECT COUNT(*) FROM product) as total_products,
+                                (SELECT COUNT(*) FROM "order") as total_orders
                         """)
                         stats = cur.fetchone()
                         context_parts.append(f"Database Statistics: {stats}")

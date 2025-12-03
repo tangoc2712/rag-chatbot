@@ -43,11 +43,26 @@ def save_chat_to_db(session_id: str, customer_id: Optional[str],
         # Convert metadata dict to JSON string
         metadata_json = json.dumps(metadata) if metadata else json.dumps({})
         
+        # Try to get the user's UUID from the uid field
+        user_uuid = None
+        if customer_id:
+            try:
+                cur.execute("""
+                    SELECT user_id FROM "user" 
+                    WHERE uid = %s OR user_id::text = %s
+                    LIMIT 1
+                """, (customer_id, customer_id))
+                result = cur.fetchone()
+                if result:
+                    user_uuid = result[0]
+            except Exception:
+                pass  # If lookup fails, leave as None
+        
         cur.execute("""
             INSERT INTO chat_history 
             (session_id, customer_id, user_message, bot_response, metadata)
             VALUES (%s, %s, %s, %s, %s::jsonb)
-        """, (session_id, customer_id, user_message, bot_response, metadata_json))
+        """, (session_id, user_uuid, user_message, bot_response, metadata_json))
         conn.commit()
     except Exception as e:
         conn.rollback()

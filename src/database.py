@@ -90,7 +90,7 @@ def get_user_role(user_id: str) -> str:
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT role FROM users 
+                SELECT role FROM "user" 
                 WHERE uid = %s OR user_id::text = %s
                 LIMIT 1
             """, (user_id, user_id))

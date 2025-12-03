@@ -44,8 +44,8 @@ class VisitorECommerceRAG:
             return []
 
         # Visitors can only access products and reviews
-        allowed_tables = ['products', 'product_review', 'category']
-        tables_to_search = tables if tables else ['products', 'product_review']
+        allowed_tables = ['product', 'product_review', 'category']
+        tables_to_search = tables if tables else ['product', 'product_review']
         tables_to_search = [t for t in tables_to_search if t in allowed_tables]
 
         try:
@@ -63,23 +63,23 @@ class VisitorECommerceRAG:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 for table in tables_to_search:
                     try:
-                        if table == 'products':
+                        if table == 'product':
                             sql = """
-                                SELECT 'products' as _source_table, 
+                                SELECT 'product' as _source_table, 
                                        product_id, name, description, price, sale_price, 
                                        stock, category_name, colors, sizes, materials, product_url,
                                        embedding <=> %s::vector as distance 
-                                FROM products
+                                FROM product
                                 WHERE embedding IS NOT NULL AND is_active = true
                                 ORDER BY distance ASC LIMIT %s
                             """
                         elif table == 'product_review':
                             sql = """
                                 SELECT 'product_review' as _source_table,
-                                       pr.rating, pr.review_text, pr.created_at, p.name as product_name,
+                                       pr.rating, pr.comment, pr.created_at, p.name as product_name,
                                        pr.embedding <=> %s::vector as distance
                                 FROM product_review pr
-                                LEFT JOIN products p ON pr.product_id::text = p.product_id::text
+                                LEFT JOIN product p ON pr.product_id = p.product_id
                                 WHERE pr.embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
@@ -121,72 +121,51 @@ class VisitorECommerceRAG:
         intro_message = ""
         if is_intro_query:
             intro_message = """
-When users ask who you are or about yourself, introduce yourself with enthusiasm and humor:
-"Hey there, welcome to the shop! 🎉 I'm your friendly neighborhood sales assistant (minus the spidey suit, unfortunately 🕷️). 
-
-I'm here to help you discover amazing products, check out what other shoppers are saying, and find that perfect item you didn't even know you needed! 
-
-Want to place orders or track purchases? Just create an account - it takes like 30 seconds, I promise I counted! ⏱️
-
-So, what brings you to our little corner of the internet today? Looking for something specific or just window shopping? Either way, I'm here to help! 😊"
+When users ask who you are or about yourself, give a brief introduction:
+"Hi! I'm your shopping assistant. I can help you find products, check reviews, and explore our catalog. Need to track orders? Just create an account! What are you looking for today?"
 """
         
         prompt = f"""
-You are a fun, enthusiastic SALES ASSISTANT at an e-commerce store. Think of yourself as a friendly shop owner who LOVES their products and genuinely wants to help customers find what they need.
+You are a helpful SALES ASSISTANT at an e-commerce store. Be friendly but concise.
 
-YOUR PERSONALITY:
-🎭 Humorous - Use light jokes, playful language, and fun emojis
-🌟 Enthusiastic - Get excited about products and helping customers
-🤝 Proactive - Always ask follow-up questions and offer suggestions
-💬 Conversational - Chat like a friendly salesperson, not a robot
-🎯 Helpful - Your goal is to help visitors find and love products
+YOUR STYLE:
+- Friendly and helpful, but keep responses SHORT and to the point
+- Use emojis sparingly (1-2 per response maximum)
+- Get straight to the answer, avoid lengthy introductions
+- Be conversational but efficient
 
 WHAT YOU CAN ACCESS:
-✅ Products (names, descriptions, prices, stock, colors, sizes, materials, product_url)
-✅ Product reviews and ratings
-✅ Product categories  
-✅ Featured and popular products
+- Products (names, descriptions, prices, stock, colors, sizes, materials, product_url)
+- Product reviews and ratings
+- Product categories
 
 WHAT YOU CANNOT ACCESS:
-❌ Order information (they need to sign up first - encourage this!)
-❌ User accounts, payments, shipping details
+- Order information (suggest creating an account)
+- User accounts, payments, shipping details
 
 {intro_message}
 
 HOW TO RESPOND:
-1. **Be a Seller** - You're selling products you believe in! Show enthusiasm
-2. **Include Product Links** - When mentioning products, include the product URL or link
-3. **Ask Follow-up Questions** - End responses with engaging questions like:
-   - "Does this catch your eye? 👀"
-   - "Would you like me to find more options like this?"
-   - "Is this the style you're going for, or should we explore other directions?"
-   - "Need any other details before you fall in love with it? 😄"
-   - "What do you think? Should I show you similar items?"
-   - "Anything else I can help you find today?"
-4. **Be Proactive** - Suggest related products, mention deals, offer alternatives
-5. **Use Humor** - Light jokes, fun comparisons, playful language
-6. **Create Urgency (gently)** - Mention low stock, popular items, limited time
+1. Answer the question directly first
+2. Include product links when mentioning products
+3. Keep suggestions brief - max 2-3 product recommendations
+4. End with ONE short follow-up question if appropriate
+5. Avoid repetitive phrases and excessive enthusiasm
 
 FORMATTING:
-- 🏷️ Show prices clearly: "$29.99" or "~~$39.99~~ **$29.99** (You save $10!)"
-- 🔗 Include product links when available
-- ⭐ Show ratings: "⭐ 4.8/5 (from 120 happy customers!)"
-- 📦 Stock status: "Only 3 left - they're flying off the shelves!"
-- Use emojis to make it fun and scannable
-- Keep it conversational, not like a boring product catalog
-
-EXAMPLE TONE:
-"Ooh, great choice! 🎉 This jacket is basically a hug you can wear - super cozy AND stylish. It's got a 4.9 star rating because, well, it's awesome! 
-👉 Check it out here: [product link]
-Only 5 left in stock though - winter's coming and people are snatching these up! ❄️
-Want me to show you what others pair it with, or are you ready to make it yours?"
+- Show prices clearly: "$29.99" or "~~$39.99~~ **$29.99**"
+- Include product links when available
+- Show ratings simply: "4.8/5 ⭐"
+- Mention stock only if low: "Only 3 left"
+- Use bullet points for multiple items
+- Keep total response under 150 words when possible
 
 Context from database:
 {context}
 
 Visitor's Question: {query}
 
-Respond as an enthusiastic, helpful sales assistant. Be fun, include product links when available, and always end with an engaging follow-up question:
+Respond concisely and helpfully:
 """
         
         try:
@@ -252,12 +231,12 @@ Respond as an enthusiastic, helpful sales assistant. Be fun, include product lin
                                                      'looking for', 'featured', 'popular', 'best', 'top',
                                                      'recommend', 'suggestion', 'trending', 'hot',
                                                      'sale', 'discount', 'deal', 'offer', 'cheap', 'affordable']):
-                tables_to_search.append('products')
-                debug_info['data_accessed'].append('products')
+                tables_to_search.append('product')
+                debug_info['data_accessed'].append('product')
             
             # If no specific table matched, search products by default (unless intro query)
             if not tables_to_search and not is_intro_query:
-                tables_to_search = ['products', 'product_review']
+                tables_to_search = ['product', 'product_review']
                 debug_info['data_accessed'].append('general_search')
             
             # Perform semantic search
@@ -266,13 +245,34 @@ Respond as an enthusiastic, helpful sales assistant. Be fun, include product lin
                 if search_results:
                     context_parts.append(f"Relevant Results: {search_results}")
                     debug_info['search_results_count'] = len(search_results)
+                else:
+                    # Fallback: fetch some products directly if semantic search returns nothing
+                    conn = self.get_db_connection()
+                    try:
+                        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                            cur.execute("""
+                                SELECT product_id, name, description, price, sale_price, 
+                                       stock, category_name, colors, sizes, materials, product_url
+                                FROM product 
+                                WHERE is_active = true 
+                                ORDER BY RANDOM() 
+                                LIMIT 5
+                            """)
+                            fallback_products = cur.fetchall()
+                            if fallback_products:
+                                context_parts.append(f"Available Products: {fallback_products}")
+                                debug_info['fallback_products'] = len(fallback_products)
+                    except Exception as e:
+                        logger.warning(f"Fallback query failed: {e}")
+                    finally:
+                        conn.close()
             
             # Add general stats if needed
             if not context_parts and not is_intro_query:
                 conn = self.get_db_connection()
                 try:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                        cur.execute("SELECT COUNT(*) as total_products FROM products WHERE is_active = true")
+                        cur.execute("SELECT COUNT(*) as total_products FROM product WHERE is_active = true")
                         stats = cur.fetchone()
                         context_parts.append(f"We have {stats['total_products']} products available for you to explore.")
                 finally:
