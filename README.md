@@ -1,18 +1,69 @@
-# E-commerce RAG Chatbot - Admin Mode
+# E-commerce RAG Chatbot
 
-An AI-powered database assistant with **ADMIN-level access** leveraging **RAG (Retrieval-Augmented Generation)** with PostgreSQL + pgvector for semantic search and Google Gemini for embeddings/LLM.
+An AI-powered chatbot system leveraging **RAG (Retrieval-Augmented Generation)** with PostgreSQL + pgvector for semantic search and Google Gemini for embeddings/LLM.
+
+> **📦 New Microservices Architecture:** This project has been restructured into independent services. See [MIGRATION.md](MIGRATION.md) for details.
+
+## Project Structure
+
+This repository contains two independent services:
+
+### 🤖 RAG Service (`services/rag-service/`)
+The main chatbot API service with role-based access (Admin, User, Visitor) for querying e-commerce data.
+- FastAPI-based REST API
+- PostgreSQL with pgvector for semantic search
+- Google Gemini for embeddings and LLM
+- Standalone deployment ready
+
+**[→ View RAG Service Documentation](services/rag-service/README.md)**
+
+### ⚙️ Airflow Service (`services/airflow/`)
+Background embedding generation pipeline using Apache Airflow for processing and updating vector embeddings.
+- Apache Airflow 2.8.0
+- Scheduled DAGs for embedding generation
+- Support for multiple entity types
+- Independent deployment
+
+**[→ View Airflow Service Documentation](services/airflow/README.md)**
+
+## Quick Start
+
+Each service can be deployed independently:
+
+### Deploy RAG Service Only
+
+```bash
+cd services/rag-service
+cp .env.example .env
+# Edit .env and set your GOOGLE_API_KEY
+docker compose up -d
+```
+
+Access at `http://localhost:8000`
+
+### Deploy Airflow Service Only
+
+```bash
+cd services/airflow
+cp .env.example .env
+# Edit .env and set your GOOGLE_API_KEY
+docker compose up -d
+```
+
+Access at `http://localhost:8080`
 
 ## Key Features
 
-- 🔑 **Full Admin Access** - Query any data across all tables without restrictions
+- 🔑 **Role-Based Access** - Admin, User, and Visitor modes with different permissions
 - 🧠 **Intelligent Query Routing** - Automatically detects intent and routes to SQL or semantic search
-- 📊 **Multi-Table Support** - Access to 14+ tables including products, orders, users, payments, shipments, reviews, and more
+- 📊 **Multi-Table Support** - Access to 14+ tables including products, orders, users, payments, and more
 - 💬 **Natural Language Interface** - Ask questions in plain English
-- ⚡ **Real-time Analysis** - Get instant insights on sales, inventory, customer behavior, and more
+- ⚡ **Real-time Analysis** - Get instant insights on sales, inventory, customer behavior
+- 🔄 **Automated Embeddings** - Scheduled pipeline for keeping embeddings up-to-date
 
 ## Supported Tables
 
-The chatbot has full access to:
+The system supports:
 - **Products** - Product catalog with descriptions, prices, ratings
 - **Users** - Customer profiles and information
 - **Orders** - Order history and status
@@ -34,70 +85,7 @@ The chatbot has full access to:
 - **LLM**: Google Gemini `gemini-2.5-flash-lite`
 - **API**: FastAPI
 - **Pipeline**: Apache Airflow 2.8.0
-
-## Prerequisites
-
-- Docker & Docker Compose
-- Python 3.11+
-- Google API Key ([Get one here](https://makersuite.google.com/app/apikey))
-
-## Quick Start
-
-### 1. Environment Setup
-
-```bash
-cd Ecommerce-RAG-Chatbot
-cp .env.example .env
-# Edit .env and set your GOOGLE_API_KEY
-```
-
-**`.env` file:**
-```env
-GOOGLE_API_KEY=your_google_api_key
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=rag_user
-DB_PASSWORD=rag_password
-DB_NAME=ecommerce_rag
-```
-
-### 2. Start PostgreSQL
-
-```bash
-docker-compose up -d postgres
-```
-
-### 3. Install Python Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Setup Database & Load Data
-
-**Prepare data files** in `data/raw/`:
-- `Product_Information_Dataset.csv`
-- `Order_Data_Dataset.csv`
-
-**Run migration:**
-```bash
-python scripts/migrate_db.py
-```
-
-This will:
-- Create tables with pgvector extension
-- Load and preprocess CSV data
-- Generate embeddings via Gemini API
-- Insert data into PostgreSQL
-
-### 5. Start API Server
-
-```bash
-python scripts/run.py api
-# API: http://localhost:8000
-# Docs: http://localhost:8000/docs
-# Web Chat: http://localhost:8000/static/index.html
-```
+- **Deployment**: Docker & Docker Compose
 
 ## Project Structure
 
@@ -111,99 +99,32 @@ python scripts/run.py api
 │   ├── create_chat_history_table.py
 │   └── run.py                  # Run API server
 ├── src/
-│   ├── api/                    # FastAPI endpoints
-│   ├── etl/                    # ETL modules
-│   └── rag/                    # RAG assistant
-├── static/                     # Web UI
-├── docker-compose.yml
-└── requirements.txt
-```
 
-## API Endpoints
+## Development
 
-### Chat
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/chat/message` | Send message to chatbot (admin access) |
-| GET | `/chat/history/{session_id}` | Get chat history |
+For detailed development instructions, see the service-specific documentation:
+- [RAG Service Development](services/rag-service/README.md)
+- [Airflow Service Development](services/airflow/README.md)
 
-### Products
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/products/search` | Search products semantically |
-| GET | `/products/{product_id}` | Get product details |
-| GET | `/products/` | List all products |
+## Documentation
 
-### Users
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/users/{user_id}` | Get user details |
-| GET | `/users/` | List all users |
-| GET | `/users/search` | Search users |
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide for both services
+- **[MIGRATION.md](MIGRATION.md)** - Project restructuring details and migration guide
+- **[API_DOCUMENTATION.md](API_DOCUMENTATION.md)** - Full API reference
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and design
 
-### Orders
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/orders/{order_id}` | Get order details |
-| GET | `/orders/` | List all orders |
-| GET | `/orders/user/{user_id}` | Get user's orders |
+## Prerequisites
 
-### Other Endpoints
-- `/categories/*` - Category management
-- `/reviews/*` - Product reviews
-- `/inventory/*` - Stock management
-- `/payments/*` - Payment tracking
-- `/shipments/*` - Shipment tracking
-- `/coupons/*` - Coupon management
+- Docker & Docker Compose
+- Python 3.11+ (for local development)
+- Google API Key ([Get one here](https://makersuite.google.com/app/apikey))
 
-## Example Queries
+## Contributing
 
-The admin chatbot can answer questions like:
+1. Each service is independent - work on them separately
+2. Follow the service-specific README for development setup
+3. Test changes in isolation before deployment
 
-**Sales & Revenue:**
-- "What's our total revenue this month?"
-- "Show me the top 10 selling products"
-- "How many orders are pending?"
+## License
 
-**Inventory:**
-- "What products are low in stock?"
-- "Show me products with 0 inventory"
-
-**Customer Insights:**
-- "How many new users registered this week?"
-- "Who are our top customers by order value?"
-- "Show me users with the most orders"
-
-**Product Analysis:**
-- "What are the highest rated products?"
-- "Find products with negative reviews"
-- "Show me products in the electronics category"
-
-**Operations:**
-- "List pending shipments"
-- "Show payment failures today"
-- "What coupons are currently active?"
-
-## Using Airflow (Optional)
-
-```bash
-docker-compose up -d
-# Airflow UI: http://localhost:8080 (admin/admin)
-```
-
-**Available DAGs:**
-- `embedding_pipeline_dag`: Generate embeddings (configurable: process_from, process_to, batch_size)
-- `data_ingestion_dag`: Daily data loading
-- `maintenance_dag`: Weekly cleanup
-
-## Troubleshooting
-
-**Database connection error:**
-```bash
-docker-compose ps
-docker-compose logs postgres
-```
-
-**Embedding errors:**
-- Verify `GOOGLE_API_KEY` is set correctly
-- Check API quota at [Google Cloud Console](https://console.cloud.google.com/apis/dashboard)
+See LICENSE file for details.

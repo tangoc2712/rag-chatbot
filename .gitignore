@@ -1,5 +1,45 @@
+# Python
 venv/
-.env
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment files
+.env
+.env.local
+services/rag-service/.env
+services/airflow/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# Data
+*.csv
+*.json.backup
+services/rag-service/data/raw/*.csv
+services/airflow/data/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Airflow
+services/airflow/logs/
+services/airflow/airflow.db
+services/airflow/airflow.cfg
+
