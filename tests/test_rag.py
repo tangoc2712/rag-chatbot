@@ -5,7 +5,7 @@ from pathlib import Path
 import shutil
 from datetime import datetime
 
-from src.rag.assistant import ECommerceRAG
+from src.rag.admin_assistant import ECommerceRAG
 from src.rag.utils import (
     preprocess_text,
     calculate_semantic_similarity,

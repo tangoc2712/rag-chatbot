@@ -85,7 +85,7 @@ def api(host, port, reload, workers):
 def batch(input_file, output_file):
     """Run batch processing of queries"""
     try:
-        from src.rag.assistant import ECommerceRAG
+        from src.rag.admin_assistant import ECommerceRAG
         from src.config import Settings
         import json
         

@@ -16,7 +16,7 @@ class ECommerceRAG:
         # Initialize Gemini
         if self.settings.GOOGLE_API_KEY:
             genai.configure(api_key=self.settings.GOOGLE_API_KEY)
-            self.llm = genai.GenerativeModel('gemini-2.5-flash')
+            self.llm = genai.GenerativeModel('gemini-2.5-flash-lite')
             logger.info("Google Gemini LLM initialized successfully")
         else:
             self.llm = None

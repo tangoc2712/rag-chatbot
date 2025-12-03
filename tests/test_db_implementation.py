@@ -6,7 +6,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.rag.assistant import ECommerceRAG
+from src.rag.admin_assistant import ECommerceRAG
 from src.api.endpoints.products import search_products
 from src.api.endpoints.orders import get_customer_orders
 
