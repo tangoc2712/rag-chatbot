@@ -20,7 +20,7 @@ class VisitorECommerceRAG:
         # Initialize Gemini
         if self.settings.GOOGLE_API_KEY:
             genai.configure(api_key=self.settings.GOOGLE_API_KEY)
-            self.llm = genai.GenerativeModel('gemini-2.5-flash-lite')
+            self.llm = genai.GenerativeModel('gemini-2.5-flash')
             logger.info("Google Gemini LLM initialized successfully for Visitor Assistant")
         else:
             self.llm = None

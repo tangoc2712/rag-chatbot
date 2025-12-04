@@ -19,7 +19,7 @@ class ECommerceRAG:
         # Initialize Gemini
         if self.settings.GOOGLE_API_KEY:
             genai.configure(api_key=self.settings.GOOGLE_API_KEY)
-            self.llm = genai.GenerativeModel('gemini-2.5-flash-lite')
+            self.llm = genai.GenerativeModel('gemini-2.5-flash')
             logger.info("Google Gemini LLM initialized successfully")
         else:
             self.llm = None
@@ -254,108 +254,189 @@ class ECommerceRAG:
         intro_message = ""
         if is_intro_query:
             intro_message = """
-When users ask who you are, give a brief introduction:
-"I'm the Admin Analytics Assistant. I provide accurate data on orders, users, products, payments, shipments, inventory, and all business metrics. What data do you need?"
+When users ask who you are or about yourself, introduce yourself as:
+"I'm an AI E-commerce Database Assistant with full admin access to your entire database. I can help you query any data, analyze business metrics, track orders and shipments, manage inventory, review customer behavior, and provide comprehensive insights across all tables in your e-commerce platform!"
 """
         
         prompt = f"""
-You are a DATA ANALYST ASSISTANT for e-commerce administrators. Provide accurate, complete, and direct answers.
+You are an AI E-commerce Database Assistant with ADMIN-level access to the entire database.
 
-YOUR ROLE:
-- Provide precise data and statistics
-- Answer questions directly without unnecessary advice or suggestions
-- Focus on numbers, facts, and completeness
-- Be professional and concise
+DATABASE SCHEMA & RELATIONSHIPS:
 
-DATA YOU CAN ACCESS:
-- Orders: counts, totals, status, history, items
-- Order Items: products in specific orders, quantities, prices per order
-- Users/Customers: counts, profiles, activity
-- Products: inventory, prices, categories, stock levels, photos, product_url
-- Payments: amounts, status, methods, totals
-- Shipments: status, tracking, delivery info
-- Reviews: ratings, counts, averages
-- Coupons: codes, discounts, usage
-- Carts: items, totals, abandoned carts
-- Inventory: stock levels, availability
+1. **product** (Main products table)
+   - product_id (UUID, PK)
+   - name, description, sku
+   - price (NUMERIC), sale_price (NUMERIC), currency (CHAR(3))
+   - stock (INTEGER) - available inventory
+   - category_id (INTEGER) → FK to category.category_id
+   - photos (TEXT[]), colors (JSONB), sizes (TEXT[])
+   - materials, care, product_url, featured (BOOLEAN)
+   - category_name (TEXT) - denormalized for quick access
+   - created_at, updated_at, is_active (BOOLEAN)
+   - embedding (VECTOR) - for semantic search
 
-IMPORTANT - TRACKING ORDER IDs:
-- When you mention an order in your response, ALWAYS remember its order_id
-- If the user asks a follow-up question about "this order", "that order", or "the order", use the order_id from the most recent order you discussed
-- The context may contain order_id fields - extract and use them for follow-up queries about order items
+2. **category** (Product categories)
+   - category_id (INTEGER, PK)
+   - name (VARCHAR), type (TEXT)
+   - parent_category_id (INTEGER, FK) - self-referencing for hierarchy
+   - img_url, created_at, updated_at
+   - embedding (VECTOR)
+
+3. **"user"** (Customer/user accounts - QUOTED, reserved word!)
+   - user_id (VARCHAR, PK) - NOT UUID!
+   - email (TEXT, UNIQUE) - **CRITICAL: Used to join with order.user_id**
+   - full_name, phone, address, city, country
+   - date_of_birth (DATE), job, gender
+   - role (TEXT, default 'user') - 'user', 'admin', 'visitor'
+   - role_id (INTEGER) → FK to roles_bk.role_id
+   - uid, photo_url, provider (for OAuth)
+   - created_at, updated_at, is_active (BOOLEAN)
+   - embedding (VECTOR)
+
+4. **"order"** (Customer orders - QUOTED, reserved word!)
+   - order_id (UUID, PK)
+   - user_id (VARCHAR) - **CRITICAL: Contains EMAIL/TEXT, NOT UUID!**
+   - **JOIN RULE: "user".email = "order".user_id** (NOT user_id = user_id!)
+   - status (TEXT) - 'pending', 'processing', 'shipped', 'delivered', 'cancelled'
+   - order_total (NUMERIC) - **total amount including all charges**
+   - subtotal, tax, shipping_charges, discount (NUMERIC)
+   - currency (CHAR(3), default 'USD')
+   - shipping_info (JSONB) - address, method, etc.
+   - created_at, updated_at
+   - embedding (VECTOR)
+
+5. **order_item** (Items in each order)
+   - order_item_id (UUID, PK)
+   - order_id (UUID) → FK to "order".order_id
+   - product_id (UUID) → FK to product.product_id
+   - quantity (INTEGER), unit_price (NUMERIC), total_price (NUMERIC)
+   - created_at, updated_at
+   - embedding (VECTOR)
+   - **Relationship: order → order_item (1:many), product → order_item (1:many)**
+
+6. **payment** (Payment transactions)
+   - payment_id (UUID, PK)
+   - order_id (UUID) → FK to "order".order_id
+   - amount (NUMERIC) - payment amount
+   - method (VARCHAR) - 'credit_card', 'paypal', 'bank_transfer', etc.
+   - status (VARCHAR) - 'pending', 'completed', 'failed', 'refunded'
+   - paid_at (TIMESTAMP)
+   - created_at, updated_at
+   - embedding (VECTOR)
+   - **Relationship: order → payment (1:1 or 1:many)**
+
+7. **shipment** (Shipping/delivery tracking)
+   - shipment_id (UUID, PK)
+   - order_id (UUID) → FK to "order".order_id
+   - tracking_number (VARCHAR)
+   - status (VARCHAR) - 'pending', 'in_transit', 'delivered', 'failed'
+   - carrier_id (UUID) - carrier/driver reference
+   - shipped_at, delivered_at (TIMESTAMP)
+   - created_at, updated_at
+   - embedding (VECTOR)
+   - **Relationship: order → shipment (1:1 or 1:many)**
+
+8. **product_review** (Customer product reviews)
+   - product_review_id (UUID, PK)
+   - product_id (UUID) → FK to product.product_id
+   - user_id (VARCHAR) → FK to "user".user_id
+   - rating (INTEGER, 1-5), title, comment (TEXT)
+   - created_at, updated_at
+   - embedding (VECTOR)
+   - **Relationship: product → review (1:many), user → review (1:many)**
+
+9. **cart** (Shopping carts)
+   - cart_id (INTEGER, PK)
+   - user_id (VARCHAR) → FK to "user".user_id
+   - status (cart_status) - 'active', 'abandoned', 'checked_out'
+   - total_price (NUMERIC)
+   - created_at, updated_at
+   - embedding (VECTOR)
+
+10. **cart_item** (Items in shopping carts)
+    - cart_item_id (INTEGER, PK)
+    - cart_id (INTEGER) → FK to cart.cart_id
+    - product_id (UUID) → FK to product.product_id
+    - quantity (INTEGER), unit_price, total_price (NUMERIC)
+    - created_at, updated_at
+    - embedding (VECTOR)
+
+11. **inventory** (Product inventory tracking)
+    - inventory_id (UUID, PK)
+    - product_id (UUID) → FK to product.product_id
+    - warehouse_id (UUID)
+    - quantity (INTEGER) - available stock
+    - last_updated (TIMESTAMP)
+    - embedding (VECTOR)
+
+12. **coupon** (Discount coupons)
+    - coupon_id (UUID, PK)
+    - code (VARCHAR, UNIQUE) - coupon code
+    - discount_type (VARCHAR) - 'percent' or 'amount'
+    - value (NUMERIC), amount (NUMERIC)
+    - valid_from, valid_to (TIMESTAMP)
+    - usage_count (INTEGER)
+    - created_at, updated_at
+    - embedding (VECTOR)
+
+13. **event** (User activity tracking)
+    - event_id (UUID, PK)
+    - user_id (UUID), session_id (VARCHAR)
+    - event_type (VARCHAR) - 'page_view', 'product_view', 'add_to_cart', etc.
+    - page_url, product_id (TEXT)
+    - metadata (JSONB) - additional event data
+    - ts (TIMESTAMP)
+    - embedding (VECTOR)
+
+14. **chat_history** (Conversation history)
+    - id (INTEGER, PK)
+    - session_id (TEXT), customer_id (UUID)
+    - user_message, bot_response (TEXT)
+    - timestamp (TIMESTAMP)
+    - metadata (JSONB)
+
+CRITICAL JOIN RULES:
+- **user ↔ order**: "user".email = "order".user_id (order.user_id stores EMAIL!)
+- **order ↔ order_item**: "order".order_id = order_item.order_id
+- **order ↔ payment**: "order".order_id = payment.order_id
+- **order ↔ shipment**: "order".order_id = shipment.order_id
+- **product ↔ order_item**: product.product_id = order_item.product_id
+- **product ↔ category**: product.category_id = category.category_id
+- **Always QUOTE reserved words**: "user", "order"
+
+ANALYTICS QUERIES YOU CAN ANSWER:
+- Revenue: SUM(order_total) from "order" WHERE status != 'cancelled'
+- Monthly revenue: Filter by DATE_TRUNC('month', created_at)
+- Order counts: COUNT(*) from "order" grouped by status
+- Top products: JOIN order_item with product, GROUP BY product, ORDER BY SUM(quantity)
+- Customer analytics: COUNT orders per user, total spending, etc.
+- Inventory levels: product.stock or inventory.quantity
+- Payment status: COUNT(*) from payment GROUP BY status
+- Shipment tracking: Join shipment with order for delivery status
 
 {intro_message}
 
-HOW TO RESPOND:
-1. **Answer directly** - Start with the exact data requested
-2. **Be complete** - Include all relevant numbers and details
-3. **Be accurate** - Double-check calculations and totals
-4. **Product recommendations** - Format each product as a JSON object on its own line:
-   {{"type":"product","name":"Product Name","price":29.99,"sale_price":19.99,"image":"https://...","url":"https://...","stock":50,"colors":[],"sizes":["S","M","L"]}}
-5. **Order information** - Format each order as a JSON object on its own line:
-   {{"type":"order","order_id":"abc-123","status":"Delivered","total":161.64,"currency":"USD","placed_date":"2025-10-15","url":"https://hackathon-478514.web.app/order/abc-123","items_count":2,"item_names":["Product 1","Product 2"]}}
-6. **No advice** - Don't give business suggestions unless asked
-7. **No small talk** - Skip greetings and pleasantries
-8. **Structured format** - Use tables or lists for multiple items
+FORMATTING RULES:
+- Use **bold** for metrics, IDs, key values
+- Use bullet points (•/-) for lists
+- Use numbered lists (1., 2., 3.) for rankings
+- Format prices: **$1,234.56**
+- Use ⭐ for ratings
+- Tables for multiple entries
+- Line breaks for readability
 
-FORMATTING RULES FOR PRODUCTS:
-- Each product MUST be on a separate line as valid JSON
-- Use the FIRST photo from the photos array as "image"
-- Show original price and sale_price (use null if no sale)
-- Include product_url as "url"
-- Include available colors and sizes arrays
+PRODUCT FORMAT (JSON per line):
+{{"type":"product","name":"Product Name","price":29.99,"sale_price":19.99,"image":"https://...","url":"https://...","stock":50,"colors":[],"sizes":["S","M","L"]}}
 
-FORMATTING RULES FOR ORDERS:
-- Each order MUST be on a separate line as valid JSON with type="order"
-- Include order_id, status, total, currency, placed_date
-- URL format: "https://hackathon-478514.web.app/order/{{order_id}}"
-- Include items_count and item_names array (list of product names in the order)
-- Status should be clear: "Delivered", "Shipped", "Processing", "Cancelled", etc.
+ORDER FORMAT (JSON per line):
+{{"type":"order","order_id":"abc-123","status":"Delivered","total":161.64,"currency":"USD","placed_date":"2025-10-15","url":"https://hackathon-478514.web.app/order/{{order_id}}","items_count":2,"item_names":["Product 1","Product 2"]}}
 
-FORMATTING RULES FOR ORDER ITEMS:
-- When showing items in an order, list each item with product name, quantity, unit price, and total
-- Format: "- [Product Name] x[quantity] @ $[unit_price] = $[total_price]"
-- Include order_id reference when listing items
-
-GENERAL FORMATTING:
-- Use **bold** for key numbers and important values
-- Use tables for comparing data when appropriate
-- Use bullet points for lists
-- Show currency with proper formatting: **$1,234.56**
-- Show percentages clearly: **45.2%**
-- For counts: **Total: 150 orders**
-- Keep responses focused and scannable
-
-EXAMPLE RESPONSES:
-
-Q: "How many orders this month?"
-A: "**Total Orders (This Month): 245**
-- Completed: 180
-- Processing: 45
-- Pending: 20
-**Total Revenue: $34,567.89**"
-
-Q: "Top selling products?"
-A: "**Top 5 Products by Sales:**
-1. Product A - 156 units ($4,680)
-2. Product B - 134 units ($2,680)
-3. Product C - 98 units ($1,960)
-4. Product D - 87 units ($2,610)
-5. Product E - 76 units ($1,520)"
-
-IMPORTANT:
-- Never use emojis
-- Don't add motivational comments or suggestions
-- Don't say "Great question!" or similar phrases
-- Present data cleanly without commentary
-- If data is incomplete or unavailable, state it clearly
-
-Admin Question: {query}
+User Query: {query}
 
 Retrieved Data:
 {context}
 
-Provide a direct, accurate, and complete answer:
+Provide accurate, data-driven answer with rich formatting:
 """
         
         try:
@@ -364,6 +445,126 @@ Provide a direct, accurate, and complete answer:
         except Exception as e:
             logger.error(f"Error generating LLM response: {str(e)}")
             return f"I found some information but couldn't generate a summary. Here is the raw data:\n\n{context}"
+
+    def get_analytics_data(self, query_lower: str) -> Dict[str, Any]:
+        """Fetch analytics data for revenue, orders, etc."""
+        analytics = {}
+        conn = get_db_connection()
+        
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Revenue queries
+                if any(word in query_lower for word in ['revenue', 'sales', 'total amount', 'earnings']):
+                    # This month's revenue
+                    cur.execute("""
+                        SELECT 
+                            COALESCE(SUM(order_total), 0) as total_revenue,
+                            COUNT(*) as order_count
+                        FROM "order"
+                        WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)
+                            AND status != 'cancelled'
+                    """)
+                    monthly = cur.fetchone()
+                    analytics['monthly_revenue'] = monthly
+                    
+                    # Total revenue (all time)
+                    cur.execute("""
+                        SELECT 
+                            COALESCE(SUM(order_total), 0) as total_revenue,
+                            COUNT(*) as total_orders
+                        FROM "order"
+                        WHERE status != 'cancelled'
+                    """)
+                    total = cur.fetchone()
+                    analytics['total_revenue'] = total
+                    
+                    # Revenue by status
+                    cur.execute("""
+                        SELECT 
+                            status,
+                            COUNT(*) as count,
+                            COALESCE(SUM(order_total), 0) as revenue
+                        FROM "order"
+                        GROUP BY status
+                        ORDER BY revenue DESC
+                    """)
+                    by_status = cur.fetchall()
+                    analytics['revenue_by_status'] = by_status
+                
+                # Order analytics
+                if any(word in query_lower for word in ['order', 'orders', 'purchase']):
+                    cur.execute("""
+                        SELECT 
+                            status,
+                            COUNT(*) as count
+                        FROM "order"
+                        GROUP BY status
+                        ORDER BY count DESC
+                    """)
+                    order_status = cur.fetchall()
+                    analytics['order_status_breakdown'] = order_status
+                
+                # Product analytics
+                if any(word in query_lower for word in ['top product', 'best selling', 'popular product']):
+                    cur.execute("""
+                        SELECT 
+                            p.product_id,
+                            p.name,
+                            p.price,
+                            p.sale_price,
+                            COUNT(oi.order_item_id) as times_ordered,
+                            SUM(oi.quantity) as total_quantity,
+                            SUM(oi.total_price) as total_revenue
+                        FROM product p
+                        JOIN order_item oi ON p.product_id = oi.product_id
+                        GROUP BY p.product_id, p.name, p.price, p.sale_price
+                        ORDER BY total_quantity DESC
+                        LIMIT 10
+                    """)
+                    top_products = cur.fetchall()
+                    analytics['top_products'] = top_products
+                
+                # Customer analytics
+                if any(word in query_lower for word in ['customer', 'user', 'top customer', 'best customer']):
+                    cur.execute("""
+                        SELECT 
+                            u.user_id,
+                            u.email,
+                            u.full_name,
+                            COUNT(o.order_id) as order_count,
+                            COALESCE(SUM(o.order_total), 0) as total_spent
+                        FROM "user" u
+                        JOIN "order" o ON u.email = o.user_id
+                        WHERE o.status != 'cancelled'
+                        GROUP BY u.user_id, u.email, u.full_name
+                        ORDER BY total_spent DESC
+                        LIMIT 10
+                    """)
+                    top_customers = cur.fetchall()
+                    analytics['top_customers'] = top_customers
+                
+                # Payment analytics
+                if any(word in query_lower for word in ['payment', 'paid', 'transaction']):
+                    cur.execute("""
+                        SELECT 
+                            status,
+                            method,
+                            COUNT(*) as count,
+                            COALESCE(SUM(amount), 0) as total_amount
+                        FROM payment
+                        GROUP BY status, method
+                        ORDER BY total_amount DESC
+                    """)
+                    payment_stats = cur.fetchall()
+                    analytics['payment_stats'] = payment_stats
+                
+        except Exception as e:
+            logger.error(f"Error fetching analytics: {e}")
+            analytics['error'] = str(e)
+        finally:
+            conn.close()
+        
+        return analytics
 
     def process_query(self, query: str, customer_id: Optional[int] = None, 
                      role: Optional[str] = None, session_id: Optional[str] = None,
@@ -416,6 +617,19 @@ Provide a direct, accurate, and complete answer:
         }
         
         try:
+            # First, check if this is an analytics query
+            is_analytics_query = any(word in query_lower for word in [
+                'revenue', 'sales', 'total', 'earnings', 'top product', 'best selling',
+                'popular', 'top customer', 'best customer', 'how many', 'count'
+            ])
+            
+            if is_analytics_query and not is_intro_query:
+                # Fetch analytics data directly
+                analytics_data = self.get_analytics_data(query_lower)
+                if analytics_data:
+                    context_parts.append(f"Analytics Data: {analytics_data}")
+                    debug_info['data_accessed'].append('analytics')
+            
             # Determine which tables to search based on query
             tables_to_search = []
             
@@ -445,7 +659,7 @@ Provide a direct, accurate, and complete answer:
                 debug_info['data_accessed'].append('orders')
             
             # Check for payment queries
-            if any(word in query_lower for word in ['payment', 'revenue', 'sales', 'paid']):
+            if any(word in query_lower for word in ['payment', 'paid', 'transaction method']):
                 tables_to_search.append('payment')
                 debug_info['data_accessed'].append('payments')
             
@@ -481,7 +695,7 @@ Provide a direct, accurate, and complete answer:
                 debug_info['data_accessed'].append('events')
             
             # If no specific table matched, search main tables (unless intro query)
-            if not tables_to_search and not is_intro_query:
+            if not tables_to_search and not is_intro_query and not is_analytics_query:
                 tables_to_search = ['product', 'order', 'user']
                 debug_info['data_accessed'].append('general_search')
             
@@ -492,7 +706,7 @@ Provide a direct, accurate, and complete answer:
                     context_parts.append(f"Relevant Results: {search_results}")
                     debug_info['search_results_count'] = len(search_results)
             
-            # Add general stats if needed
+            # Add general stats if needed and no other data was found
             if not context_parts and not is_intro_query:
                 conn = get_db_connection()
                 try:
@@ -501,7 +715,8 @@ Provide a direct, accurate, and complete answer:
                             SELECT 
                                 (SELECT COUNT(*) FROM "user") as total_users,
                                 (SELECT COUNT(*) FROM product) as total_products,
-                                (SELECT COUNT(*) FROM "order") as total_orders
+                                (SELECT COUNT(*) FROM "order") as total_orders,
+                                (SELECT COALESCE(SUM(order_total), 0) FROM "order" WHERE status != 'cancelled') as total_revenue
                         """)
                         stats = cur.fetchone()
                         context_parts.append(f"Database Statistics: {stats}")
