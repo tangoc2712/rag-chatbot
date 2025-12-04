@@ -5,19 +5,37 @@ from typing import Optional
 from functools import lru_cache
 import time
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
 def get_db_connection():
-    """Create a database connection"""
-    return psycopg2.connect(
-        host=settings.DB_HOST,
-        port=settings.DB_PORT,
-        user=settings.DB_USER,
-        password=settings.DB_PASSWORD,
-        dbname=settings.DB_NAME
-    )
+    """Create a database connection
+    
+    Supports both Cloud SQL Unix socket and TCP/IP connections.
+    When USE_CLOUD_SQL_SOCKET is True, uses Unix socket connection.
+    """
+    if settings.USE_CLOUD_SQL_SOCKET and settings.CLOUD_SQL_CONNECTION_NAME:
+        # Cloud SQL Unix socket connection
+        unix_socket_path = f"/cloudsql/{settings.CLOUD_SQL_CONNECTION_NAME}"
+        logger.info(f"Connecting to Cloud SQL via Unix socket: {unix_socket_path}")
+        return psycopg2.connect(
+            host=unix_socket_path,
+            user=settings.DB_USER,
+            password=settings.DB_PASSWORD,
+            dbname=settings.DB_NAME
+        )
+    else:
+        # TCP/IP connection (for local development or Cloud SQL Proxy)
+        logger.info(f"Connecting to database via TCP/IP: {settings.DB_HOST}:{settings.DB_PORT}")
+        return psycopg2.connect(
+            host=settings.DB_HOST,
+            port=settings.DB_PORT,
+            user=settings.DB_USER,
+            password=settings.DB_PASSWORD,
+            dbname=settings.DB_NAME
+        )
 
 def get_db_cursor(conn):
     """Get a cursor that returns dictionaries"""

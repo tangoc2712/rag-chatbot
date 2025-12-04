@@ -32,6 +32,28 @@ gcloud builds submit \
 
 ### 2. Deploy with Internal-Only Access
 
+**Option A: Using Cloud SQL Unix Socket (Recommended)**
+
+```bash
+gcloud run deploy rag-service \
+  --image gcr.io/hackathon-478514/rag-service:latest \
+  --project hackathon-478514 \
+  --region asia-southeast1 \
+  --platform managed \
+  --ingress internal \
+  --allow-unauthenticated \
+  --port 8000 \
+  --memory 2Gi \
+  --cpu 2 \
+  --timeout 300 \
+  --max-instances 10 \
+  --min-instances 0 \
+  --set-env-vars "USE_CLOUD_SQL_SOCKET=true,CLOUD_SQL_CONNECTION_NAME=hackathon-478514:asia-southeast1:ndsv-db,DB_USER=postgres,DB_NAME=postgres,DB_PASSWORD=Huypn456785@1,GOOGLE_API_KEY=AIzaSyA7fxxwd5WaZ4Q9vi9Si7QtykqmGq2adqE" \
+  --add-cloudsql-instances hackathon-478514:asia-southeast1:ndsv-db
+```
+
+**Option B: Using TCP/IP Connection**
+
 ```bash
 gcloud run deploy rag-service \
   --image gcr.io/hackathon-478514/rag-service \
@@ -52,7 +74,18 @@ gcloud run deploy rag-service \
 **Key settings:**
 - `--ingress internal` - Only accessible within GCP project
 - `--allow-unauthenticated` - No auth needed (already internal)
+- `--add-cloudsql-instances` - Connects via Unix socket (Option A only)
 - Traffic stays on Google's private network
+
+**Environment Variables:**
+- `USE_CLOUD_SQL_SOCKET` - Set to `true` to use Unix socket connection (more secure)
+- `CLOUD_SQL_CONNECTION_NAME` - Format: `PROJECT_ID:REGION:INSTANCE_NAME`
+- `DB_HOST` - Database host IP (for TCP/IP connection)
+- `DB_PORT` - Database port (default: 5432)
+- `DB_USER` - Database username
+- `DB_NAME` - Database name
+- `DB_PASSWORD` - Database password
+- `GOOGLE_API_KEY` - Google Gemini API key
 
 ### 3. Get Service URL
 

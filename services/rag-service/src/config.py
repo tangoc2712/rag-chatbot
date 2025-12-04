@@ -28,16 +28,16 @@ class Settings(BaseSettings):
     # - Unix socket: /cloudsql/PROJECT:REGION:INSTANCE
     # - Cloud SQL Proxy: localhost or cloud sql proxy address
     # - Public IP (not recommended for production)
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 5432
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = "password"
-    DB_NAME: str = "ecommerce_rag"
+    DB_HOST: str = os.getenv("DB_HOST", "localhost")
+    DB_PORT: int = int(os.getenv("DB_PORT", "5432"))
+    DB_USER: str = os.getenv("DB_USER", "postgres")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "password")
+    DB_NAME: str = os.getenv("DB_NAME", "postgres")
     
     # Cloud SQL connection settings
     # Set to True if using Unix socket connection to Cloud SQL
     USE_CLOUD_SQL_SOCKET: bool = os.getenv("USE_CLOUD_SQL_SOCKET", "false").lower() == "true"
-    CLOUD_SQL_CONNECTION_NAME: Optional[str] = None  # Format: project:region:instance
+    CLOUD_SQL_CONNECTION_NAME: Optional[str] = os.getenv("CLOUD_SQL_CONNECTION_NAME")  # Format: project:region:instance
     
     # Development Settings
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
