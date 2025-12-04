@@ -213,18 +213,20 @@ def get_conversation_history(session_id: str, limit: int = 5) -> List[Dict[str, 
         conn = get_db_connection()
         cur = conn.cursor()
         
+        # Get the most recent messages (DESC) then reverse to get chronological order
         cur.execute("""
             SELECT user_message, bot_response, timestamp
             FROM chat_history
             WHERE session_id = %s
-            ORDER BY timestamp ASC
+            ORDER BY timestamp DESC
             LIMIT %s
         """, (session_id, limit))
         
         rows = cur.fetchall()
         
+        # Reverse to get chronological order (oldest to newest)
         history = []
-        for row in rows:
+        for row in reversed(rows):
             history.append({
                 'user_message': row[0],
                 'bot_response': row[1],
@@ -279,16 +281,20 @@ Conversation History:
 Current Follow-up Question: {current_query}
 
 Instructions:
-1. If the current question contains pronouns (it, that, they, these, etc.) or implicit references, replace them with explicit entities from the conversation history
-2. If the question is already standalone and clear, return it as-is
-3. Preserve the original intent and specificity of the question
-4. Make the rewritten query suitable for vector database search (clear, specific, searchable)
-5. Keep it concise - don't add unnecessary context, just make it standalone
+1. **CRITICAL FOR ORDER QUERIES**: Look for order IDs in the Assistant's responses (format: #abc123 or "Order #abc123" or order_id values like "a1b2c3d4-...")
+2. If the current question refers to "this order", "that order", "the order", or "these items", extract the EXACT order_id from the conversation history
+3. Replace pronouns (it, that, they, these) with explicit entities from the conversation
+4. If the question is already standalone and clear, return it as-is
+5. Preserve the original intent and specificity of the question
+6. Keep it concise - don't add unnecessary context, just make it standalone
 
 Examples:
 - "What about in blue?" → "Show me [previous product] in blue color"
 - "How much does it cost?" → "What is the price of [previous product]?"
 - "Show me my recent orders" → "Show me my recent orders" (already standalone)
+- "What items are in this order?" (after bot showed "Order #a1b2c3d4") → "What items are in order a1b2c3d4?"
+- "What's in the order?" (after bot mentioned order_id: xyz-456) → "Show me items in order xyz-456"
+- "what are these items of this order?" (after bot showed order #abc123) → "What are the items in order abc123?"
 
 Rewritten Query (respond with ONLY the rewritten query, no explanations):"""
 

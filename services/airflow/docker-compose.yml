@@ -26,7 +26,6 @@ x-airflow-common:
     - ./plugins:/opt/airflow/plugins
     - ./config:/opt/airflow/config
     - airflow_logs:/opt/airflow/logs
-  user: "airflow"
   networks:
     - airflow_network
 
@@ -66,6 +65,8 @@ services:
           --lastname User \
           --role Admin \
           --email admin@example.com || true
+        airflow variables set stg_config "$$(cat /opt/airflow/config/stg_var.json | tr -d '\n')" || true
+        airflow variables set local_config "$$(cat /opt/airflow/config/local_var.json | tr -d '\n')" || true
         echo "Airflow initialization complete"
     environment:
       <<: *airflow-common-env

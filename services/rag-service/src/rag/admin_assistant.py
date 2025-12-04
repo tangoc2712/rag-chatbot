@@ -35,7 +35,7 @@ class ECommerceRAG:
             return []
 
         # All tables available to admin
-        all_tables = ['product', 'user', 'order', 'product_review', 'category', 
+        all_tables = ['product', 'user', 'order', 'order_item', 'product_review', 'category', 
                       'cart', 'cart_item', 'payment', 'shipment', 'inventory', 'coupon', 'event']
         
         # Determine which tables to search
@@ -52,6 +52,8 @@ class ECommerceRAG:
                 tables_to_search.append('user')
             if any(word in query_lower for word in ['order', 'purchase history', 'bought']):
                 tables_to_search.append('order')
+            if any(word in query_lower for word in ['order item', 'items in order', 'order contents', 'products in order']):
+                tables_to_search.append('order_item')
             if any(word in query_lower for word in ['review', 'comment', 'feedback', 'rating']):
                 tables_to_search.append('product_review')
             if any(word in query_lower for word in ['cart', 'shopping cart']):
@@ -117,6 +119,21 @@ class ECommerceRAG:
                                        embedding <=> %s::vector as distance
                                 FROM "order"
                                 WHERE embedding IS NOT NULL
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                        elif table == 'order_item':
+                            sql = """
+                                SELECT 'order_item' as _source_table,
+                                       oi.order_item_id, oi.order_id, oi.product_id, 
+                                       oi.quantity, oi.unit_price, oi.total_price,
+                                       p.name as product_name, p.description as product_description,
+                                       o.status as order_status, o.created_at as order_date,
+                                       o.user_id,
+                                       oi.embedding <=> %s::vector as distance
+                                FROM order_item oi
+                                JOIN "order" o ON oi.order_id = o.order_id
+                                LEFT JOIN product p ON oi.product_id = p.product_id
+                                WHERE oi.embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
                         elif table == 'product_review':
@@ -252,6 +269,7 @@ YOUR ROLE:
 
 DATA YOU CAN ACCESS:
 - Orders: counts, totals, status, history, items
+- Order Items: products in specific orders, quantities, prices per order
 - Users/Customers: counts, profiles, activity
 - Products: inventory, prices, categories, stock levels, photos, product_url
 - Payments: amounts, status, methods, totals
@@ -260,6 +278,11 @@ DATA YOU CAN ACCESS:
 - Coupons: codes, discounts, usage
 - Carts: items, totals, abandoned carts
 - Inventory: stock levels, availability
+
+IMPORTANT - TRACKING ORDER IDs:
+- When you mention an order in your response, ALWAYS remember its order_id
+- If the user asks a follow-up question about "this order", "that order", or "the order", use the order_id from the most recent order you discussed
+- The context may contain order_id fields - extract and use them for follow-up queries about order items
 
 {intro_message}
 
@@ -288,6 +311,11 @@ FORMATTING RULES FOR ORDERS:
 - URL format: "https://hackathon-478514.web.app/order/{{order_id}}"
 - Include items_count and item_names array (list of product names in the order)
 - Status should be clear: "Delivered", "Shipped", "Processing", "Cancelled", etc.
+
+FORMATTING RULES FOR ORDER ITEMS:
+- When showing items in an order, list each item with product name, quantity, unit price, and total
+- Format: "- [Product Name] x[quantity] @ $[unit_price] = $[total_price]"
+- Include order_id reference when listing items
 
 GENERAL FORMATTING:
 - Use **bold** for key numbers and important values
@@ -366,11 +394,16 @@ Provide a direct, accurate, and complete answer:
                 rewritten_query = rewrite_query_with_context(query, conversation_history)
                 query_lower = rewritten_query.lower()
         
-        # Check if this is an introduction/greeting query
+        # Check if this is an introduction/greeting query (but not order-related queries)
         is_intro_query = any(word in query_lower for word in [
             'who are you', 'what are you', 'what can you do', 
-            'introduce yourself', 'your capabilities', 'hello', 'hi', 'hey'
-        ])
+            'introduce yourself', 'your capabilities'
+        ]) and not any(word in query_lower for word in ['order', 'item', 'product', 'purchase'])
+        
+        # Separate check for greetings that don't conflict with queries
+        is_greeting = query_lower.strip() in ['hello', 'hi', 'hey'] or query_lower.startswith(('hello ', 'hi ', 'hey '))
+        if is_greeting:
+            is_intro_query = True
         
         context_parts = []
         debug_info = {
@@ -388,28 +421,37 @@ Provide a direct, accurate, and complete answer:
             
             # Check for customer/user queries
             if any(word in query_lower for word in ['customer', 'user', 'profile', 'account']):
-                tables_to_search.append('users')
+                tables_to_search.append('user')
                 debug_info['data_accessed'].append('users')
             
             # Check for product queries
             if any(word in query_lower for word in ['product', 'item', 'inventory', 'stock']):
-                tables_to_search.append('products')
+                tables_to_search.append('product')
                 tables_to_search.append('inventory')
                 debug_info['data_accessed'].append('products')
             
             # Check for order queries
             if any(word in query_lower for word in ['order', 'purchase', 'transaction']):
-                tables_to_search.append('orders')
+                tables_to_search.append('order')
+                debug_info['data_accessed'].append('orders')
+            
+            # Check for order item queries
+            if any(word in query_lower for word in ['items in', 'products in', 'order item', 
+                                                      'items in order', 'items in this order',
+                                                      'what\'s in', 'order contents', 'order details']):
+                tables_to_search.append('order_item')
+                tables_to_search.append('order')
+                debug_info['data_accessed'].append('order_items')
                 debug_info['data_accessed'].append('orders')
             
             # Check for payment queries
             if any(word in query_lower for word in ['payment', 'revenue', 'sales', 'paid']):
-                tables_to_search.append('payments')
+                tables_to_search.append('payment')
                 debug_info['data_accessed'].append('payments')
             
             # Check for shipment queries
             if any(word in query_lower for word in ['shipment', 'shipping', 'delivery']):
-                tables_to_search.append('shipments')
+                tables_to_search.append('shipment')
                 debug_info['data_accessed'].append('shipments')
             
             # Check for review queries
@@ -424,7 +466,7 @@ Provide a direct, accurate, and complete answer:
             
             # Check for coupon queries
             if any(word in query_lower for word in ['coupon', 'discount', 'promo']):
-                tables_to_search.append('coupons')
+                tables_to_search.append('coupon')
                 debug_info['data_accessed'].append('coupons')
             
             # Check for cart queries

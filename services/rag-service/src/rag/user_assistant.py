@@ -36,7 +36,7 @@ class UserECommerceRAG:
             return []
 
         # Users can access products, reviews, categories, and their own orders
-        allowed_tables = ['product', 'product_review', 'category', 'order', 'shipment']
+        allowed_tables = ['product', 'product_review', 'category', 'order', 'order_item', 'shipment']
         tables_to_search = tables if tables else ['product', 'product_review']
         tables_to_search = [t for t in tables_to_search if t in allowed_tables]
 
@@ -97,6 +97,22 @@ class UserECommerceRAG:
                                        o.embedding <=> %s::vector as distance
                                 FROM "order" o
                                 WHERE o.user_id = %s AND o.embedding IS NOT NULL
+                                ORDER BY distance ASC LIMIT %s
+                            """
+                            cur.execute(sql, [query_embedding, user_id, limit])
+                        elif table == 'order_item' and user_id:
+                            # Only fetch order items for user's orders
+                            sql = """
+                                SELECT 'order_item' as _source_table,
+                                       oi.order_item_id, oi.order_id, oi.product_id, 
+                                       oi.quantity, oi.unit_price, oi.total_price,
+                                       p.name as product_name, p.description as product_description,
+                                       o.status as order_status, o.created_at as order_date,
+                                       oi.embedding <=> %s::vector as distance
+                                FROM order_item oi
+                                JOIN "order" o ON oi.order_id = o.order_id
+                                LEFT JOIN product p ON oi.product_id = p.product_id
+                                WHERE o.user_id = %s AND oi.embedding IS NOT NULL
                                 ORDER BY distance ASC LIMIT %s
                             """
                             cur.execute(sql, [query_embedding, user_id, limit])
@@ -163,10 +179,16 @@ YOUR STYLE:
 
 WHAT YOU CAN ACCESS:
 - Customer's own orders (status, items, history)
+- Order items (products in specific orders, quantities, prices)
 - Order shipments and tracking
 - Products (names, descriptions, prices, stock, colors, sizes, materials, product_url, photos)
 - Product reviews and ratings
 - Product categories
+
+IMPORTANT - TRACKING ORDER IDs:
+- When you mention an order in your response, ALWAYS remember its order_id
+- If the user asks a follow-up question about "this order", "that order", "my order", or "the order", use the order_id from the most recent order you discussed
+- The context may contain order_id fields - extract and use them for follow-up queries about order items
 
 WHAT YOU CANNOT ACCESS:
 - Other customers' data
@@ -198,6 +220,10 @@ FORMATTING RULES FOR ORDERS:
 - URL format: "https://hackathon-478514.web.app/order/{{order_id}}"
 - Include items_count and item_names array (list of product names in the order)
 - Status should be clear: "Delivered", "Shipped", "Processing", "Cancelled", etc.
+
+FORMATTING RULES FOR ORDER ITEMS:
+- When showing items in an order, list each item with product name, quantity, unit price, and total
+- Format: "- [Product Name] x[quantity] @ $[unit_price] = $[total_price]"
 - Keep total response under 200 words
 
 Context from database:
@@ -242,11 +268,16 @@ Respond concisely and helpfully:
                 rewritten_query = rewrite_query_with_context(query, conversation_history)
                 query_lower = rewritten_query.lower()
         
-        # Check if this is an introduction/greeting query
+        # Check if this is an introduction/greeting query (but not order-related queries)
         is_intro_query = any(word in query_lower for word in [
             'who are you', 'what are you', 'what can you do', 
-            'introduce yourself', 'your capabilities', 'hello', 'hi', 'hey'
-        ])
+            'introduce yourself', 'your capabilities'
+        ]) and not any(word in query_lower for word in ['order', 'item', 'product', 'purchase'])
+        
+        # Separate check for greetings that don't conflict with queries
+        is_greeting = query_lower.strip() in ['hello', 'hi', 'hey'] or query_lower.startswith(('hello ', 'hi ', 'hey '))
+        if is_greeting:
+            is_intro_query = True
         
         context_parts = []
         debug_info = {
@@ -274,8 +305,16 @@ Respond concisely and helpfully:
             # Determine which tables to search based on query
             tables_to_search = []
             
+            # Check for order item queries
+            if user_id and any(word in query_lower for word in ['items in', 'products in', 'what did i order', 
+                                                                  'items in the order', 'items in this order',
+                                                                  'what\'s in', 'order contents', 'order details']):
+                tables_to_search.append('order_item')
+                tables_to_search.append('order')
+                debug_info['data_accessed'].append('order_items')
+                debug_info['data_accessed'].append('user_orders')
             # Check for user's own order queries
-            if user_id and any(word in query_lower for word in ['my order', 'my orders', 'order status', 
+            elif user_id and any(word in query_lower for word in ['my order', 'my orders', 'order status', 
                                                                   'track order', 'my purchase', 'order history',
                                                                   'where is my', 'delivery', 'shipping']):
                 tables_to_search.append('order')

@@ -8,13 +8,25 @@
     "database": "ecommerce_rag"
   },
   "embedding": {
-    "batch_size": 50000,
+    "batch_size": 5000,
     "rate_limit_seconds": 1,
     "vector_dimensions": 768,
     "model": "models/embedding-001"
   },
   "schedules": {
     "product_embedding": "0 2 * * *",
-    "order_embedding": "0 3 * * *"
+    "category_embedding": "0 3 * * *",
+    "product_review_embedding": "0 2 * * *",
+    "user_embedding": "0 3 * * *",
+    "order_embedding": "0 3 * * *",
+    "order_item_embedding": "0 4 * * *",
+    "cart_embedding": "0 4 * * *",
+    "cart_item_embedding": "0 5 * * *",
+    "payment_embedding": "0 4 * * *",
+    "shipment_embedding": "0 4 * * *",
+    "inventory_embedding": "0 4 * * *",
+    "coupon_embedding": "0 5 * * *",
+    "event_embedding": "0 2 * * *",
+    "role_embedding": "0 5 * * *"
   }
 }
