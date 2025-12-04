@@ -94,7 +94,8 @@ async def send_message(request: ChatRequest):
             role = 'visitor'
             logger.info(f"Visitor session {session_id}")
             bot_response, debug_info = visitor_assistant.process_query(
-                user_message, 
+                user_message,
+                session_id=session_id,
                 return_debug=True
             )
         else:
@@ -107,14 +108,16 @@ async def send_message(request: ChatRequest):
                 bot_response, debug_info = admin_assistant.process_query(
                     user_message, 
                     customer_id=customer_id, 
-                    role=role, 
+                    role=role,
+                    session_id=session_id,
                     return_debug=True
                 )
             else:
                 # Scenario 1: Regular user (own orders + products/reviews)
                 bot_response, debug_info = user_assistant.process_query(
                     user_message, 
-                    user_id=customer_id, 
+                    user_id=customer_id,
+                    session_id=session_id,
                     return_debug=True
                 )
         

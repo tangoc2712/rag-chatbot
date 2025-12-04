@@ -327,20 +327,33 @@ Provide a direct, accurate, and complete answer:
             return f"I found some information but couldn't generate a summary. Here is the raw data:\n\n{context}"
 
     def process_query(self, query: str, customer_id: Optional[int] = None, 
-                     role: Optional[str] = None, return_debug: bool = False) -> Any:
+                     role: Optional[str] = None, session_id: Optional[str] = None,
+                     return_debug: bool = False) -> Any:
         """Process admin query with access to all data
         
         Args:
             query: User's question
             customer_id: Optional customer ID (admin can access any data)
             role: User's role (should be 'admin')
+            session_id: Optional session ID for conversational context
             return_debug: If True, return tuple of (response, debug_info)
         
         Returns:
             str or tuple: Response text, or (response, debug_info) if return_debug=True
         """
+        from .utils import get_conversation_history, rewrite_query_with_context
         
         query_lower = query.lower()
+        original_query = query
+        
+        # Retrieve conversation history and rewrite query if needed
+        rewritten_query = query
+        conversation_history = []
+        if session_id:
+            conversation_history = get_conversation_history(session_id, limit=5)
+            if conversation_history:
+                rewritten_query = rewrite_query_with_context(query, conversation_history)
+                query_lower = rewritten_query.lower()
         
         # Check if this is an introduction/greeting query
         is_intro_query = any(word in query_lower for word in [
@@ -351,6 +364,9 @@ Provide a direct, accurate, and complete answer:
         context_parts = []
         debug_info = {
             'query_type': 'admin_query',
+            'original_query': original_query,
+            'rewritten_query': rewritten_query,
+            'has_conversation_history': len(conversation_history) > 0,
             'is_intro': is_intro_query,
             'data_accessed': []
         }
@@ -416,9 +432,9 @@ Provide a direct, accurate, and complete answer:
                 tables_to_search = ['product', 'order', 'user']
                 debug_info['data_accessed'].append('general_search')
             
-            # Perform semantic search
+            # Perform semantic search using the rewritten query
             if tables_to_search:
-                search_results = self.semantic_search(query, tables_to_search, limit=8)
+                search_results = self.semantic_search(rewritten_query, tables_to_search, limit=8)
                 if search_results:
                     context_parts.append(f"Relevant Results: {search_results}")
                     debug_info['search_results_count'] = len(search_results)
@@ -448,8 +464,8 @@ Provide a direct, accurate, and complete answer:
         # Combine all context
         context = "\n\n".join(context_parts) if context_parts else "No specific data retrieved."
         
-        # Generate response with LLM
-        response = self.generate_llm_response(query, context, is_intro_query=is_intro_query)
+        # Generate response with LLM using the original query for natural conversation
+        response = self.generate_llm_response(original_query, context, is_intro_query=is_intro_query)
         
         if return_debug:
             return response, debug_info

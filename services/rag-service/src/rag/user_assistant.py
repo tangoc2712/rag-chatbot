@@ -211,20 +211,32 @@ Respond concisely and helpfully:
             logger.error(f"LLM Error: {e}")
             return context if context else "I'm sorry, I couldn't process your request. Please try again."
     
-    def process_query(self, query: str, user_id: Optional[str] = None, 
-                     return_debug: bool = False) -> Any:
+    def process_query(self, query: str, user_id: Optional[str] = None,
+                     session_id: Optional[str] = None, return_debug: bool = False) -> Any:
         """Process user query with access to own orders + products/reviews
         
         Args:
             query: User's question
             user_id: The authenticated user's ID (for accessing their own orders)
+            session_id: Optional session ID for conversational context
             return_debug: If True, return tuple of (response, debug_info)
         
         Returns:
             str or tuple: Response text, or (response, debug_info) if return_debug=True
         """
+        from .utils import get_conversation_history, rewrite_query_with_context
         
         query_lower = query.lower()
+        original_query = query
+        
+        # Retrieve conversation history and rewrite query if needed
+        rewritten_query = query
+        conversation_history = []
+        if session_id:
+            conversation_history = get_conversation_history(session_id, limit=5)
+            if conversation_history:
+                rewritten_query = rewrite_query_with_context(query, conversation_history)
+                query_lower = rewritten_query.lower()
         
         # Check if this is an introduction/greeting query
         is_intro_query = any(word in query_lower for word in [
@@ -236,6 +248,9 @@ Respond concisely and helpfully:
         debug_info = {
             'query_type': 'user_query',
             'user_id': user_id,
+            'original_query': original_query,
+            'rewritten_query': rewritten_query,
+            'has_conversation_history': len(conversation_history) > 0,
             'is_intro': is_intro_query,
             'data_accessed': []
         }
@@ -288,9 +303,9 @@ Respond concisely and helpfully:
                     tables_to_search.append('order')
                 debug_info['data_accessed'].append('general_search')
             
-            # Perform semantic search
+            # Perform semantic search using the rewritten query
             if tables_to_search:
-                search_results = self.semantic_search(query, tables_to_search, user_id=user_id, limit=8)
+                search_results = self.semantic_search(rewritten_query, tables_to_search, user_id=user_id, limit=8)
                 if search_results:
                     context_parts.append(f"Relevant Results: {search_results}")
                     debug_info['search_results_count'] = len(search_results)
@@ -341,8 +356,8 @@ Respond concisely and helpfully:
         # Combine all context
         context = "\n\n".join(context_parts) if context_parts else "No specific data retrieved."
         
-        # Generate response with LLM
-        response = self.generate_llm_response(query, context, is_intro_query=is_intro_query)
+        # Generate response with LLM using the original query for natural conversation
+        response = self.generate_llm_response(original_query, context, is_intro_query=is_intro_query)
         
         if return_debug:
             return response, debug_info

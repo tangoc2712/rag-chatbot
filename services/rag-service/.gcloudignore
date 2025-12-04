@@ -1,0 +1,57 @@
+# This file specifies files that are *not* uploaded to Google Cloud
+# using gcloud. It follows the same syntax as .gitignore, with the addition of
+# "#!include" directives (which insert the entries of the given .gitignore-style
+# file at that point).
+
+.gcloudignore
+.git
+.gitignore
+
+# Python pycache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Development files
+.env
+.env.local
+*.log
+
+# Data files (raw data shouldn't be deployed)
+data/raw/*.csv
+
+# Docker files (not needed in Cloud Run)
+docker-compose.yml
+Dockerfile.dev
+
+# Documentation (optional, can exclude if large)
+*.md
+!README.md
+
+# Scripts (only deployment scripts needed)
+scripts/generate_dummy_data.py
+scripts/cleanup_dummy_data.py
+scripts/setup_cloud_database.sql
+scripts/create_cloud_chat_history.py

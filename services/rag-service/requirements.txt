@@ -1,9 +1,11 @@
 # Core dependencies
 fastapi==0.110.1
 uvicorn==0.22.0
+numpy<2.0.0
 pandas==2.0.1
 requests==2.30.0
 python-dotenv==1.0.0
+pydantic-settings==2.0.3
 
 # Machine Learning and NLP
 # transformers>=4.29.2

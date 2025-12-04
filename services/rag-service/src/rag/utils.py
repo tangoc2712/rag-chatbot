@@ -2,6 +2,11 @@ import pandas as pd
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 import numpy as np
+import google.generativeai as genai
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 def preprocess_text(text: str) -> str:
     """
@@ -188,3 +193,135 @@ def format_order_response(order: Dict[str, Any]) -> str:
     response.append(f"- Priority: {order.get('Order_Priority', 'N/A')}")
     
     return "\n".join(response)
+
+
+def get_conversation_history(session_id: str, limit: int = 5) -> List[Dict[str, str]]:
+    """
+    Retrieve recent conversation history from chat_history table.
+    
+    Args:
+        session_id: The session ID to fetch history for
+        limit: Maximum number of message pairs to retrieve (default: 5)
+    
+    Returns:
+        List of conversation history dicts with 'user_message' and 'bot_response'
+        Ordered from oldest to newest
+    """
+    from ..database import get_db_connection
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT user_message, bot_response, timestamp
+            FROM chat_history
+            WHERE session_id = %s
+            ORDER BY timestamp ASC
+            LIMIT %s
+        """, (session_id, limit))
+        
+        rows = cur.fetchall()
+        
+        history = []
+        for row in rows:
+            history.append({
+                'user_message': row[0],
+                'bot_response': row[1],
+                'timestamp': row[2].isoformat() if row[2] else None
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return history
+        
+    except Exception as e:
+        logger.error(f"Error retrieving conversation history: {e}")
+        return []
+
+
+def rewrite_query_with_context(
+    current_query: str, 
+    conversation_history: List[Dict[str, str]],
+    max_retries: int = 2
+) -> str:
+    """
+    Use LLM to rewrite a follow-up query into a standalone, context-independent question.
+    This is crucial for RAG systems to handle conversational follow-ups correctly.
+    
+    Args:
+        current_query: The current user query that may contain references to previous context
+        conversation_history: List of previous message pairs (user_message, bot_response)
+        max_retries: Maximum number of retry attempts if LLM fails
+    
+    Returns:
+        Rewritten standalone query suitable for vector search
+    """
+    # If no history, return original query
+    if not conversation_history:
+        return current_query
+    
+    # Build conversation context
+    context_lines = []
+    for msg in conversation_history:
+        context_lines.append(f"User: {msg['user_message']}")
+        context_lines.append(f"Assistant: {msg['bot_response']}")
+    
+    conversation_context = "\n".join(context_lines)
+    
+    # Create prompt for query rewriting
+    prompt = f"""You are a query rewriting assistant for an e-commerce RAG system. Your task is to rewrite follow-up questions into standalone, self-contained queries that can be used for semantic search.
+
+Conversation History:
+{conversation_context}
+
+Current Follow-up Question: {current_query}
+
+Instructions:
+1. If the current question contains pronouns (it, that, they, these, etc.) or implicit references, replace them with explicit entities from the conversation history
+2. If the question is already standalone and clear, return it as-is
+3. Preserve the original intent and specificity of the question
+4. Make the rewritten query suitable for vector database search (clear, specific, searchable)
+5. Keep it concise - don't add unnecessary context, just make it standalone
+
+Examples:
+- "What about in blue?" → "Show me [previous product] in blue color"
+- "How much does it cost?" → "What is the price of [previous product]?"
+- "Show me my recent orders" → "Show me my recent orders" (already standalone)
+
+Rewritten Query (respond with ONLY the rewritten query, no explanations):"""
+
+    try:
+        # Configure Gemini API
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            logger.warning("GOOGLE_API_KEY not found, returning original query")
+            return current_query
+        
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        # Attempt query rewriting with retries
+        for attempt in range(max_retries):
+            try:
+                response = model.generate_content(prompt)
+                rewritten_query = response.text.strip()
+                
+                # Validate the rewritten query
+                if rewritten_query and len(rewritten_query) > 3:
+                    logger.info(f"Query rewritten: '{current_query}' → '{rewritten_query}'")
+                    return rewritten_query
+                else:
+                    logger.warning(f"Invalid rewritten query (attempt {attempt + 1}): '{rewritten_query}'")
+                    
+            except Exception as e:
+                logger.error(f"Error in query rewriting attempt {attempt + 1}: {e}")
+                
+        # If all retries fail, return original query
+        logger.warning("Query rewriting failed, using original query")
+        return current_query
+        
+    except Exception as e:
+        logger.error(f"Fatal error in query rewriting: {e}")
+        return current_query
