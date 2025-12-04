@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 import logging
 import google.generativeai as genai
 from ..config import Settings
+from ..database import get_db_connection
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,15 +24,6 @@ class ECommerceRAG:
         else:
             self.llm = None
             logger.warning("GOOGLE_API_KEY not found. LLM features will be limited.")
-
-    def get_db_connection(self):
-        return psycopg2.connect(
-            host=self.settings.DB_HOST,
-            port=self.settings.DB_PORT,
-            user=self.settings.DB_USER,
-            password=self.settings.DB_PASSWORD,
-            dbname=self.settings.DB_NAME
-        )
 
     def semantic_search(self, query: str, tables: List[str] = None, limit: int = 5) -> List[Dict[str, Any]]:
         """
@@ -90,7 +82,7 @@ class ECommerceRAG:
             )
             query_embedding = result['embedding']
             
-            conn = self.get_db_connection()
+            conn = get_db_connection()
             results = []
             
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -441,7 +433,7 @@ Provide a direct, accurate, and complete answer:
             
             # Add general stats if needed
             if not context_parts and not is_intro_query:
-                conn = self.get_db_connection()
+                conn = get_db_connection()
                 try:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
                         cur.execute("""

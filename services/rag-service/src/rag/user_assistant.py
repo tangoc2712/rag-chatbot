@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 import logging
 import google.generativeai as genai
 from ..config import Settings
+from ..database import get_db_connection
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,15 +25,6 @@ class UserECommerceRAG:
         else:
             self.llm = None
             logger.warning("GOOGLE_API_KEY not found. LLM features will be limited.")
-    
-    def get_db_connection(self):
-        return psycopg2.connect(
-            host=self.settings.DB_HOST,
-            port=self.settings.DB_PORT,
-            user=self.settings.DB_USER,
-            password=self.settings.DB_PASSWORD,
-            dbname=self.settings.DB_NAME
-        )
     
     def semantic_search(self, query: str, tables: List[str] = None, user_id: str = None, limit: int = 5) -> List[Dict[str, Any]]:
         """
@@ -57,7 +49,7 @@ class UserECommerceRAG:
             )
             query_embedding = result['embedding']
             
-            conn = self.get_db_connection()
+            conn = get_db_connection()
             results = []
             
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -311,7 +303,7 @@ Respond concisely and helpfully:
                     debug_info['search_results_count'] = len(search_results)
                 else:
                     # Fallback: fetch some products directly if semantic search returns nothing
-                    conn = self.get_db_connection()
+                    conn = get_db_connection()
                     try:
                         with conn.cursor(cursor_factory=RealDictCursor) as cur:
                             cur.execute("""
@@ -333,7 +325,7 @@ Respond concisely and helpfully:
             
             # Add general stats if needed
             if not context_parts and not is_intro_query:
-                conn = self.get_db_connection()
+                conn = get_db_connection()
                 try:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
                         cur.execute("SELECT COUNT(*) as total_products FROM product WHERE is_active = true")

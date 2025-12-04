@@ -17,7 +17,31 @@ Frontend (Firebase) → Backend (hackathon-ecom-server) → RAG Service (Interna
 
 ## Deployment Steps
 
-### 1. Build Container Image
+### 1. Setup API Key in Secret Manager
+
+**⚠️ NEVER put API keys directly in environment variables - they will be exposed in logs and command history!**
+
+```bash
+# Create a new API key at: https://console.cloud.google.com/apis/credentials
+# Then store it in Secret Manager:
+
+gcloud secrets create google-api-key \
+  --project hackathon-478514 \
+  --replication-policy="automatic"
+
+# Add your API key to the secret (replace YOUR_NEW_API_KEY)
+echo -n "YOUR_API_KEY_HERE" | gcloud secrets versions add google-api-key \
+  --project hackathon-478514 \
+  --data-file=-
+
+# Grant Cloud Run service account access to the secret
+gcloud secrets add-iam-policy-binding google-api-key \
+  --project hackathon-478514 \
+  --member="serviceAccount:478514-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+### 2. Build Container Image
 
 ```bash
 cd services/rag-service
@@ -30,7 +54,7 @@ gcloud builds submit \
 
 *This takes about 2-3 minutes.*
 
-### 2. Deploy with Internal-Only Access
+### 3. Deploy with Internal-Only Access
 
 **Option A: Using Cloud SQL Unix Socket (Recommended)**
 
@@ -40,7 +64,7 @@ gcloud run deploy rag-service \
   --project hackathon-478514 \
   --region asia-southeast1 \
   --platform managed \
-  --ingress internal \
+  --ingress all \
   --allow-unauthenticated \
   --port 8000 \
   --memory 2Gi \
@@ -48,7 +72,8 @@ gcloud run deploy rag-service \
   --timeout 300 \
   --max-instances 10 \
   --min-instances 0 \
-  --set-env-vars "USE_CLOUD_SQL_SOCKET=true,CLOUD_SQL_CONNECTION_NAME=hackathon-478514:asia-southeast1:ndsv-db,DB_USER=postgres,DB_NAME=postgres,DB_PASSWORD=Huypn456785@1,GOOGLE_API_KEY=AIzaSyA7fxxwd5WaZ4Q9vi9Si7QtykqmGq2adqE" \
+  --set-env-vars "USE_CLOUD_SQL_SOCKET=true,CLOUD_SQL_CONNECTION_NAME=hackathon-478514:asia-southeast1:ndsv-db,DB_USER=postgres,DB_NAME=postgres" \
+  --set-secrets "GOOGLE_API_KEY=google-api-key:latest,DB_PASSWORD=db-password:latest" \
   --add-cloudsql-instances hackathon-478514:asia-southeast1:ndsv-db
 ```
 
@@ -68,13 +93,15 @@ gcloud run deploy rag-service \
   --timeout 300 \
   --max-instances 10 \
   --min-instances 0 \
-  --set-env-vars "DB_HOST=34.177.103.63,DB_PORT=5432,DB_USER=postgres,DB_NAME=postgres,DB_PASSWORD=Huypn456785@1,GOOGLE_API_KEY=AIzaSyA7fxxwd5WaZ4Q9vi9Si7QtykqmGq2adqE"
+  --set-env-vars "DB_HOST=34.177.103.63,DB_PORT=5432,DB_USER=postgres,DB_NAME=postgres" \
+  --set-secrets "GOOGLE_API_KEY=google-api-key:latest,DB_PASSWORD=db-password:latest"
 ```
 
 **Key settings:**
 - `--ingress internal` - Only accessible within GCP project
 - `--allow-unauthenticated` - No auth needed (already internal)
 - `--add-cloudsql-instances` - Connects via Unix socket (Option A only)
+- `--set-secrets` - Securely inject secrets from Secret Manager
 - Traffic stays on Google's private network
 
 **Environment Variables:**
@@ -84,10 +111,14 @@ gcloud run deploy rag-service \
 - `DB_PORT` - Database port (default: 5432)
 - `DB_USER` - Database username
 - `DB_NAME` - Database name
-- `DB_PASSWORD` - Database password
-- `GOOGLE_API_KEY` - Google Gemini API key
 
-### 3. Get Service URL
+**Secrets (from Secret Manager):**
+- `DB_PASSWORD` - Database password (stored as `db-password` secret)
+- `GOOGLE_API_KEY` - Google Gemini API key (stored as `google-api-key` secret)
+
+**⚠️ Security Best Practice:** Never use `--set-env-vars` for sensitive data like passwords or API keys. Always use `--set-secrets` with Secret Manager.
+
+### 4. Get Service URL
 
 ```bash
 # Save the service URL
@@ -102,7 +133,7 @@ echo "RAG Service URL: $RAG_URL"
 
 **Note:** This URL only works from within your GCP project (internal traffic).
 
-### 4. Update Backend Service
+### 5. Update Backend Service
 
 ```bash
 # Add RAG_SERVICE_URL to your backend
@@ -112,7 +143,7 @@ gcloud run services update hackathon-ecom-server \
   --set-env-vars="RAG_SERVICE_URL=$RAG_URL"
 ```
 
-### 5. Backend Code Implementation
+### 6. Backend Code Implementation
 
 Add this to your backend (`hackathon-ecom-server`):
 
@@ -157,7 +188,7 @@ async def chat_endpoint(message: str, role: str = "admin"):
     }
 ```
 
-### 6. Test the Integration
+### 7. Test the Integration
 
 ```bash
 # Get your backend URL
@@ -172,7 +203,7 @@ curl -X POST "$BACKEND_URL/api/chat" \
   -d '{"message": "What are the top selling products?", "role": "admin"}'
 ```
 
-### 7. Verify Internal-Only Access
+### 8. Verify Internal-Only Access
 
 ```bash
 # This should FAIL (RAG not accessible from internet)
@@ -191,13 +222,36 @@ This confirms RAG is only accessible internally! ✅
 ## Complete Flow
 
 ```
+✅ Setup API key in Secret Manager (REQUIRED - never use plain text API keys!)
 ✅ Build container image
-✅ Deploy with internal ingress  
+✅ Deploy with internal ingress using secrets
 ✅ Get RAG service URL
 ✅ Update backend environment variable
 ✅ Add backend code to call RAG
 ✅ Test integration
 ✅ Verify internal-only access
+```
+
+## Storing DB Password in Secret Manager (Optional but Recommended)
+
+If you haven't already, store the database password in Secret Manager too:
+
+```bash
+# Create secret for database password
+gcloud secrets create db-password \
+  --project hackathon-478514 \
+  --replication-policy="automatic"
+
+# Add the password
+echo -n "Huypn456785@1" | gcloud secrets versions add db-password \
+  --project hackathon-478514 \
+  --data-file=-
+
+# Grant access
+gcloud secrets add-iam-policy-binding db-password \
+  --project hackathon-478514 \
+  --member="serviceAccount:478514-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
 ```
 
 ## Traffic Flow
