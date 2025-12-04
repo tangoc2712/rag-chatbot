@@ -78,8 +78,8 @@ async def send_message(request: ChatRequest):
     
     Scenarios:
     - No customer_id: Visitor (products + reviews only)
-    - customer_id with role='user': Regular user (own orders + products/reviews)
-    - customer_id with role='admin': Admin (full access)
+    - customer_id with role_id != 1: Regular user (own orders + products/reviews)
+    - customer_id with role_id = 1: Admin (full access)
     """
     try:
         # Generate or use existing session ID

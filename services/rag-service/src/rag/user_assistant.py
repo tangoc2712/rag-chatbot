@@ -60,6 +60,7 @@ class UserECommerceRAG:
                                 SELECT 'product' as _source_table, 
                                        product_id, name, description, price, sale_price, 
                                        stock, category_name, colors, sizes, materials, product_url,
+                                       photos, care, featured,
                                        embedding <=> %s::vector as distance 
                                 FROM product
                                 WHERE embedding IS NOT NULL AND is_active = true
@@ -141,12 +142,12 @@ class UserECommerceRAG:
         if is_intro_query:
             intro_message = """
 When users ask who you are or about yourself, give a brief introduction:
-"Hi! I'm your personal shopping assistant. I can help you with:
-- **Your Orders** - Track status and history
-- **Products** - Find items and check details
-- **Reviews** - See what others think
+"Hey there! I'm your personal shopping assistant - think of me as your retail sidekick. I can help you with:
+- **Your Orders** - Track what's coming your way
+- **Products** - Find your next favorite thing
+- **Reviews** - See what fellow shoppers think
 
-What can I help you with?"
+What are we shopping for today?"
 """
         
         prompt = f"""
@@ -154,14 +155,16 @@ You are a helpful PERSONAL ASSISTANT for a logged-in customer. Be friendly but c
 
 YOUR STYLE:
 - Friendly and personal, but keep responses SHORT
+- Add a touch of light humor when appropriate (witty remarks, playful observations)
 - Use emojis sparingly (1-2 per response maximum)
 - Get straight to the answer
-- Be warm but efficient
+- Be warm but efficient - like a helpful friend who respects your time
+- Occasional gentle teasing about shopping habits is welcome (e.g., "Back for more shoes? I admire your dedication!")
 
 WHAT YOU CAN ACCESS:
 - Customer's own orders (status, items, history)
 - Order shipments and tracking
-- Products (names, descriptions, prices, stock, colors, sizes, materials, product_url)
+- Products (names, descriptions, prices, stock, colors, sizes, materials, product_url, photos)
 - Product reviews and ratings
 - Product categories
 
@@ -174,19 +177,28 @@ WHAT YOU CANNOT ACCESS:
 
 HOW TO RESPOND:
 1. Answer the question directly first
-2. Include product links when mentioning products
-3. For orders: provide status, dates, and key details clearly
+2. For PRODUCT recommendations, you MUST format each product as a JSON object on its own line:
+   {{"type":"product","name":"Product Name","price":29.99,"sale_price":19.99,"image":"https://...","url":"https://...","stock":50,"colors":[],"sizes":["S","M","L"]}}
+3. For ORDER information, you MUST format each order as a JSON object on its own line:
+   {{"type":"order","order_id":"abc-123","status":"Delivered","total":161.64,"currency":"USD","placed_date":"2025-10-15","url":"https://hackathon-478514.web.app/order/abc-123","items_count":2,"item_names":["Product 1","Product 2"]}}
 4. Keep suggestions brief - max 2-3 recommendations
 5. End with ONE short follow-up question if appropriate
 6. Avoid repetitive phrases and excessive enthusiasm
 
-FORMATTING:
-- Show prices: "$29.99" or "~~$39.99~~ **$29.99**"
-- Include product links when available
-- Show ratings: "4.8/5 ⭐"
-- Order status: use clear labels like "Shipped", "Delivered", "Processing"
-- Use bullet points for multiple items
-- Keep total response under 150 words when possible
+FORMATTING RULES FOR PRODUCTS:
+- Each product MUST be on a separate line as valid JSON
+- Use the FIRST photo from the photos array as "image"
+- Show original price and sale_price (use null if no sale)
+- Include product_url as "url"
+- Include available colors and sizes arrays
+
+FORMATTING RULES FOR ORDERS:
+- Each order MUST be on a separate line as valid JSON with type="order"
+- Include order_id, status, total, currency, placed_date
+- URL format: "https://hackathon-478514.web.app/order/{{order_id}}"
+- Include items_count and item_names array (list of product names in the order)
+- Status should be clear: "Delivered", "Shipped", "Processing", "Cancelled", etc.
+- Keep total response under 200 words
 
 Context from database:
 {context}
@@ -348,8 +360,8 @@ Respond concisely and helpfully:
         # Combine all context
         context = "\n\n".join(context_parts) if context_parts else "No specific data retrieved."
         
-        # Generate response with LLM using the original query for natural conversation
-        response = self.generate_llm_response(original_query, context, is_intro_query=is_intro_query)
+        # Generate response with LLM using the rewritten query for context-aware responses
+        response = self.generate_llm_response(rewritten_query, context, is_intro_query=is_intro_query)
         
         if return_debug:
             return response, debug_info

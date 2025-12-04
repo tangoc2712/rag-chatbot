@@ -94,6 +94,7 @@ class ECommerceRAG:
                                 SELECT 'product' as _source_table, 
                                        product_id, name, description, price, sale_price, 
                                        stock, category_name, colors, sizes, materials, product_url,
+                                       photos, care, featured,
                                        embedding <=> %s::vector as distance 
                                 FROM product
                                 WHERE embedding IS NOT NULL
@@ -252,7 +253,7 @@ YOUR ROLE:
 DATA YOU CAN ACCESS:
 - Orders: counts, totals, status, history, items
 - Users/Customers: counts, profiles, activity
-- Products: inventory, prices, categories, stock levels
+- Products: inventory, prices, categories, stock levels, photos, product_url
 - Payments: amounts, status, methods, totals
 - Shipments: status, tracking, delivery info
 - Reviews: ratings, counts, averages
@@ -266,11 +267,29 @@ HOW TO RESPOND:
 1. **Answer directly** - Start with the exact data requested
 2. **Be complete** - Include all relevant numbers and details
 3. **Be accurate** - Double-check calculations and totals
-4. **No advice** - Don't give business suggestions unless asked
-5. **No small talk** - Skip greetings and pleasantries
-6. **Structured format** - Use tables or lists for multiple items
+4. **Product recommendations** - Format each product as a JSON object on its own line:
+   {{"type":"product","name":"Product Name","price":29.99,"sale_price":19.99,"image":"https://...","url":"https://...","stock":50,"colors":[],"sizes":["S","M","L"]}}
+5. **Order information** - Format each order as a JSON object on its own line:
+   {{"type":"order","order_id":"abc-123","status":"Delivered","total":161.64,"currency":"USD","placed_date":"2025-10-15","url":"https://hackathon-478514.web.app/order/abc-123","items_count":2,"item_names":["Product 1","Product 2"]}}
+6. **No advice** - Don't give business suggestions unless asked
+7. **No small talk** - Skip greetings and pleasantries
+8. **Structured format** - Use tables or lists for multiple items
 
-FORMATTING:
+FORMATTING RULES FOR PRODUCTS:
+- Each product MUST be on a separate line as valid JSON
+- Use the FIRST photo from the photos array as "image"
+- Show original price and sale_price (use null if no sale)
+- Include product_url as "url"
+- Include available colors and sizes arrays
+
+FORMATTING RULES FOR ORDERS:
+- Each order MUST be on a separate line as valid JSON with type="order"
+- Include order_id, status, total, currency, placed_date
+- URL format: "https://hackathon-478514.web.app/order/{{order_id}}"
+- Include items_count and item_names array (list of product names in the order)
+- Status should be clear: "Delivered", "Shipped", "Processing", "Cancelled", etc.
+
+GENERAL FORMATTING:
 - Use **bold** for key numbers and important values
 - Use tables for comparing data when appropriate
 - Use bullet points for lists
@@ -456,8 +475,8 @@ Provide a direct, accurate, and complete answer:
         # Combine all context
         context = "\n\n".join(context_parts) if context_parts else "No specific data retrieved."
         
-        # Generate response with LLM using the original query for natural conversation
-        response = self.generate_llm_response(original_query, context, is_intro_query=is_intro_query)
+        # Generate response with LLM using the rewritten query for context-aware responses
+        response = self.generate_llm_response(rewritten_query, context, is_intro_query=is_intro_query)
         
         if return_debug:
             return response, debug_info

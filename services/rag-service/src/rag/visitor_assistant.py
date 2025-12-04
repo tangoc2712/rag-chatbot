@@ -60,6 +60,7 @@ class VisitorECommerceRAG:
                                 SELECT 'product' as _source_table, 
                                        product_id, name, description, price, sale_price, 
                                        stock, category_name, colors, sizes, materials, product_url,
+                                       photos, care, featured,
                                        embedding <=> %s::vector as distance 
                                 FROM product
                                 WHERE embedding IS NOT NULL AND is_active = true
@@ -114,7 +115,7 @@ class VisitorECommerceRAG:
         if is_intro_query:
             intro_message = """
 When users ask who you are or about yourself, give a brief introduction:
-"Hi! I'm your shopping assistant. I can help you find products, check reviews, and explore our catalog. Need to track orders? Just create an account! What are you looking for today?"
+"Hey! I'm your shopping buddy here to help you discover awesome products and check out reviews. Want to track orders? Just sign up - it takes like 30 seconds! So, what catches your eye today?"
 """
         
         prompt = f"""
@@ -122,12 +123,14 @@ You are a helpful SALES ASSISTANT at an e-commerce store. Be friendly but concis
 
 YOUR STYLE:
 - Friendly and helpful, but keep responses SHORT and to the point
+- Add a sprinkle of charm and light humor (playful product descriptions, fun observations)
 - Use emojis sparingly (1-2 per response maximum)
 - Get straight to the answer, avoid lengthy introductions
-- Be conversational but efficient
+- Be conversational but efficient - think friendly salesperson, not pushy one
+- You can make casual jokes about shopping (e.g., "Great taste! That's been flying off our virtual shelves.")
 
 WHAT YOU CAN ACCESS:
-- Products (names, descriptions, prices, stock, colors, sizes, materials, product_url)
+- Products (names, descriptions, prices, stock, colors, sizes, materials, product_url, photos)
 - Product reviews and ratings
 - Product categories
 
@@ -139,18 +142,28 @@ WHAT YOU CANNOT ACCESS:
 
 HOW TO RESPOND:
 1. Answer the question directly first
-2. Include product links when mentioning products
-3. Keep suggestions brief - max 2-3 product recommendations
+2. For PRODUCT recommendations, you MUST format each product as a JSON object on its own line:
+   {{"type":"product","name":"Product Name","price":29.99,"sale_price":19.99,"image":"https://...","url":"https://...","stock":50,"colors":[],"sizes":["S","M","L"]}}
+3. Add a brief message before/after product cards
 4. End with ONE short follow-up question if appropriate
-5. Avoid repetitive phrases and excessive enthusiasm
+5. Keep non-product text concise
 
-FORMATTING:
-- Show prices clearly: "$29.99" or "~~$39.99~~ **$29.99**"
-- Include product links when available
-- Show ratings simply: "4.8/5 ⭐"
-- Mention stock only if low: "Only 3 left"
-- Use bullet points for multiple items
-- Keep total response under 150 words when possible
+FORMATTING RULES:
+- Each product MUST be on a separate line as valid JSON
+- Use the FIRST photo from the photos array as "image"
+- Show original price and sale_price (use null if no sale)
+- Include product_url as "url"
+- Include available colors and sizes arrays
+- Add a friendly intro line, then products, then a closing line
+- Keep total response under 200 words
+
+EXAMPLE RESPONSE:
+Here are some great options for you:
+
+{{"type":"product","name":"DRY-EX T-Shirt","price":56.00,"sale_price":null,"image":"https://image.uniqlo.com/...","url":"https://hackathon-478514.web.app/product/xxx","stock":226,"colors":[],"sizes":["S","M","L","XL"]}}
+{{"type":"product","name":"Men's Formal Shirt","price":47.00,"sale_price":37.60,"image":"https://...","url":"https://hackathon-478514.web.app/product/yyy","stock":15,"colors":["Blue","White"],"sizes":["M","L"]}}
+
+Would you like to see more from a specific category?
 
 Context from database:
 {context}
@@ -260,7 +273,8 @@ Respond concisely and helpfully:
                         with conn.cursor(cursor_factory=RealDictCursor) as cur:
                             cur.execute("""
                                 SELECT product_id, name, description, price, sale_price, 
-                                       stock, category_name, colors, sizes, materials, product_url
+                                       stock, category_name, colors, sizes, materials, product_url,
+                                       photos, care, featured
                                 FROM product 
                                 WHERE is_active = true 
                                 ORDER BY RANDOM() 
@@ -295,8 +309,8 @@ Respond concisely and helpfully:
         # Combine all context
         context = "\n\n".join(context_parts) if context_parts else "No specific data retrieved."
         
-        # Generate response with LLM using the original query for natural conversation
-        response = self.generate_llm_response(original_query, context, is_intro_query=is_intro_query)
+        # Generate response with LLM using the rewritten query for context-aware responses
+        response = self.generate_llm_response(rewritten_query, context, is_intro_query=is_intro_query)
         
         if return_debug:
             return response, debug_info

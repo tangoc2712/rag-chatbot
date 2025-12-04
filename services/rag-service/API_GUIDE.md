@@ -106,7 +106,7 @@ General product queries for anonymous/public users. Access to products and revie
 
 ---
 
-#### Scenario 2: User Mode (customer_id with role='user')
+#### Scenario 2: User Mode (customer_id with role_id != 1)
 
 Personalized queries for authenticated users. Access to their own orders + products/reviews.
 
@@ -140,7 +140,7 @@ Personalized queries for authenticated users. Access to their own orders + produ
 
 ---
 
-#### Scenario 3: Admin Mode (customer_id with role='admin')
+#### Scenario 3: Admin Mode (customer_id with role_id='1')
 
 Analytics and business intelligence queries. Full database access for reporting.
 
@@ -291,8 +291,8 @@ curl -X DELETE https://rag-service-359180589188.asia-southeast1.run.app/chat/his
 
 **How customer_id determines mode:**
 - **No customer_id**: Visitor mode (products + reviews only)
-- **customer_id with role='user' in DB**: User mode (own orders + products/reviews)
-- **customer_id with role='admin' in DB**: Admin mode (full access)
+- **customer_id with role_id != 1 in DB**: User mode (own orders + products/reviews)
+- **customer_id with role_id = 1 in DB**: Admin mode (full access)
 
 ### Response Schema
 
@@ -347,8 +347,8 @@ The API uses a **single endpoint** (`/chat/message`) that automatically determin
 
 1. **No `customer_id`** → Visitor mode
 2. **`customer_id` provided** → Query database `user` table for role:
-   - If `role='admin'` → Admin mode
-   - If `role='user'` → User mode
+   - If `role_id='1'` → Admin mode
+   - If `role_id!='1'` → User mode
    - If not found → Defaults to visitor mode
 
 ### Access Matrix
@@ -845,7 +845,7 @@ https://console.cloud.google.com/run/detail/asia-southeast1/rag-service/metrics?
 
 **4. Wrong role detected**
 - ✅ Verify `customer_id` exists in database `user` table
-- ✅ Check `role` field in user record is set correctly ('user' or 'admin')
+- ✅ Check `role_id` field in user record: `role_id=1` for admin, any other value for user
 - ✅ If no `customer_id` provided, defaults to visitor mode
 
 **5. Slow responses**

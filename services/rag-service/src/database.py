@@ -92,7 +92,7 @@ def get_user_role(user_id: str) -> str:
         user_id: The user's ID (uid field in users table)
     
     Returns:
-        str: User's role ('admin' or 'user')
+        str: User's role ('admin' if role_id=1, otherwise 'user')
     """
     if not user_id:
         return 'user'
@@ -108,14 +108,14 @@ def get_user_role(user_id: str) -> str:
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT role FROM "user" 
+                SELECT role_id FROM "user" 
                 WHERE uid = %s OR user_id::text = %s
                 LIMIT 1
             """, (user_id, user_id))
             result = cur.fetchone()
             
-            if result and result.get('role'):
-                role = result['role']
+            if result and result.get('role_id') == 1:
+                role = 'admin'
             else:
                 role = 'user'  # Default role
             
